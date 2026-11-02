@@ -14,6 +14,7 @@ The point is **experimentation**, not a commitment to any one technique or proto
 | [Awesome Cooking](awesome/README.md) | A handpicked index of inspiring open recipes, food projects, tools and books. |
 | [Research](research/README.md) | Food-science mechanisms, historical experiments and scientific reading notes. |
 | [Ideas](ideas/README.md) | A wide-ranging backlog of experiments worth trying. |
+| [BakeLab — baking simulator](tools/baking-simulator/README.md) | **Working prototype:** 20 ingredients, baking controls, Python heat/moisture solver and A/B comparisons. [Open HTML](tools/baking-simulator/index.html). |
 | [Safety](SAFETY.md) | Food suitability, laboratory boundaries, processing safety and dietary considerations. |
 
 ## How a test progresses
