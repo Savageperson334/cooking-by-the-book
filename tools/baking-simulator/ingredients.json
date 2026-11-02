@@ -1,0 +1,22 @@
+[
+  {"id":"bread_flour","name":"Bread flour","category":"Grains","water":0.12,"protein":0.130,"fat":0.015,"starch":0.685,"sugar":0.010,"fiber":0.025,"ash":0.015,"gluten":0.92,"amount":500,"max":1500,"step":1},
+  {"id":"ap_flour","name":"All-purpose flour","category":"Grains","water":0.12,"protein":0.105,"fat":0.011,"starch":0.711,"sugar":0.012,"fiber":0.027,"ash":0.014,"gluten":0.82,"amount":0,"max":1500,"step":1},
+  {"id":"whole_wheat","name":"Whole wheat flour","category":"Grains","water":0.11,"protein":0.125,"fat":0.025,"starch":0.605,"sugar":0.010,"fiber":0.11,"ash":0.015,"gluten":0.65,"amount":0,"max":1500,"step":1},
+  {"id":"rye_flour","name":"Rye flour","category":"Grains","water":0.12,"protein":0.105,"fat":0.02,"starch":0.664,"sugar":0.01,"fiber":0.068,"ash":0.013,"gluten":0.05,"amount":0,"max":1500,"step":1},
+  {"id":"oats","name":"Rolled oats","category":"Grains","water":0.085,"protein":0.17,"fat":0.07,"starch":0.56,"sugar":0.01,"fiber":0.085,"ash":0.02,"gluten":0,"amount":0,"max":900,"step":1},
+  {"id":"water","name":"Water","category":"Liquids","water":1,"protein":0,"fat":0,"starch":0,"sugar":0,"fiber":0,"ash":0,"gluten":0,"amount":340,"max":2000,"step":1},
+  {"id":"milk","name":"Whole milk","category":"Liquids","water":0.875,"protein":0.033,"fat":0.035,"starch":0,"sugar":0.049,"fiber":0,"ash":0.008,"gluten":0,"amount":0,"max":1500,"step":1},
+  {"id":"egg","name":"Whole egg","category":"Liquids","water":0.763,"protein":0.126,"fat":0.095,"starch":0,"sugar":0.004,"fiber":0,"ash":0.012,"gluten":0,"amount":0,"max":800,"step":1},
+  {"id":"banana","name":"Mashed banana","category":"Liquids","water":0.75,"protein":0.011,"fat":0.003,"starch":0.055,"sugar":0.12,"fiber":0.026,"ash":0.01,"gluten":0,"amount":0,"max":1000,"step":1},
+  {"id":"olive_oil","name":"Olive oil","category":"Fats","water":0,"protein":0,"fat":1,"starch":0,"sugar":0,"fiber":0,"ash":0,"gluten":0,"amount":0,"max":600,"step":1},
+  {"id":"butter","name":"Butter","category":"Fats","water":0.16,"protein":0.01,"fat":0.81,"starch":0,"sugar":0.01,"fiber":0,"ash":0.01,"gluten":0,"amount":0,"max":600,"step":1},
+  {"id":"sugar","name":"White sugar","category":"Sweeteners","water":0,"protein":0,"fat":0,"starch":0,"sugar":1,"fiber":0,"ash":0,"gluten":0,"amount":10,"max":1000,"step":1},
+  {"id":"honey","name":"Honey","category":"Sweeteners","water":0.175,"protein":0.005,"fat":0,"starch":0,"sugar":0.82,"fiber":0,"ash":0,"gluten":0,"amount":0,"max":800,"step":1},
+  {"id":"salt","name":"Salt","category":"Leavening & salts","water":0,"protein":0,"fat":0,"starch":0,"sugar":0,"fiber":0,"ash":1,"gluten":0,"amount":10,"max":100,"step":0.1},
+  {"id":"instant_yeast","name":"Instant yeast","category":"Leavening & salts","water":0.05,"protein":0.45,"fat":0.05,"starch":0,"sugar":0.1,"fiber":0.22,"ash":0.13,"gluten":0,"amount":5,"max":100,"step":0.1},
+  {"id":"baking_powder","name":"Baking powder","category":"Leavening & salts","water":0,"protein":0,"fat":0,"starch":0,"sugar":0,"fiber":0,"ash":1,"gluten":0,"amount":0,"max":100,"step":0.1},
+  {"id":"baking_soda","name":"Baking soda","category":"Leavening & salts","water":0,"protein":0,"fat":0,"starch":0,"sugar":0,"fiber":0,"ash":1,"gluten":0,"amount":0,"max":100,"step":0.1},
+  {"id":"cornstarch","name":"Cornstarch","category":"Starches & proteins","water":0.11,"protein":0,"fat":0,"starch":0.89,"sugar":0,"fiber":0,"ash":0,"gluten":0,"amount":0,"max":1000,"step":1},
+  {"id":"vital_gluten","name":"Vital wheat gluten","category":"Starches & proteins","water":0.08,"protein":0.76,"fat":0.03,"starch":0.08,"sugar":0,"fiber":0.02,"ash":0.03,"gluten":0.95,"amount":0,"max":500,"step":1},
+  {"id":"cocoa","name":"Cocoa powder","category":"Starches & proteins","water":0.05,"protein":0.20,"fat":0.14,"starch":0.20,"sugar":0.02,"fiber":0.32,"ash":0.07,"gluten":0,"amount":0,"max":500,"step":1}
+]
