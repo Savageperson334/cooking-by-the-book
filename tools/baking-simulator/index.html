@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>BakeLab — Cooking by the Book</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="../../README.md"><span class="mark">◉</span> COOKING BY THE BOOK <span class="slash">/</span> <strong>BAKELAB</strong></a>
+    <div class="header-right"><span class="engine-dot" id="engine-dot"></span><span id="engine-status">Starting Python engine…</span><a class="source" href="https://github.com/Savageperson334/cooking-by-the-book/tree/main/tools/baking-simulator" target="_blank" rel="noopener">Source ↗</a></div>
+  </header>
+  <main>
+    <section class="intro">
+      <div><div class="eyebrow">EXPERIMENTAL FOOD PHYSICS · BUILD 0.1</div><h1>What happens <em>if?</em></h1><p>Change the formula. Change the oven. Run a time-dependent simulation of heat, moisture and early material transformations. Try sensible recipes—or completely unreasonable ones.</p></div>
+      <aside class="confidence"><strong>Model confidence</strong><span>Calculated: 1D heat flow & approximate moisture transport</span><span>Exploratory: browning & transformation indices</span><span class="notice">Not a food-safety or doneness determination</span></aside>
+    </section>
+    <div class="workspace">
+      <aside class="controls">
+        <div class="panel-heading"><h2>01 <span>Formula</span></h2><button type="button" id="reset" class="ghost">Reset</button></div>
+        <label class="caption" for="preset">Start from a scenario</label>
+        <select id="preset" class="preset"><option value="bread">Lean bread dough</option><option value="rich">Rich sweet dough</option><option value="cake">Cake-like batter</option><option value="wet">Extreme: liquid soup</option><option value="dry">Extreme: dry powder</option><option value="salt">Extreme: salt overload</option><option value="oil">Extreme: mostly oil</option></select>
+        <div class="mix-head"><span>INGREDIENT</span><span>GRAMS</span></div>
+        <div id="ingredients"></div>
+        <div class="formula-total"><span>Total formula</span><strong id="total-mass">—</strong></div>
+        <div class="panel-heading oven-heading"><h2>02 <span>Process</span></h2></div>
+        <div id="process-controls"></div>
+        <div class="buttonbar"><button type="button" id="run" class="run" disabled>Run prediction <span>→</span></button><button type="button" id="save-a" class="secondary" disabled>Save A</button><button type="button" id="save-b" class="secondary" disabled>Save B</button></div><div class="export-row"><button type="button" id="export" class="ghost" disabled>↧ Export run JSON</button><button type="button" id="csv" class="ghost" disabled>↧ Export time series CSV</button></div>
+        <p class="fineprint">Sliders accept unusual combinations intentionally. The solver does not hide extreme inputs; it reports when its assumptions become unreliable.</p>
+      </aside>
+      <section class="results">
+        <div class="panel-heading results-head"><h2>03 <span>Prediction</span></h2><span class="badge" id="run-indicator">WAITING</span></div>
+        <div id="error" class="error" hidden></div>
+        <div class="metrics" id="metrics"><article><span>Center</span><strong>—</strong><small>°C</small></article><article><span>Surface</span><strong>—</strong><small>°C</small></article><article><span>Water lost</span><strong>—</strong><small>% of initial mass</small></article><article><span>Browning index</span><strong>—</strong><small>relative; experimental</small></article></div>
+        <section class="card chart-card"><div class="chart-head"><div><h3>Inside the bake</h3><p>Time-dependent heat & material change</p></div><select id="metric"><option value="temp">Temperature · °C</option><option value="moisture">Water fraction · %</option><option value="mass">Mass lost · %</option><option value="change">Gelatinization proxy · %</option><option value="brown">Browning index · %</option></select></div><svg id="chart" viewBox="0 0 760 305" role="img" aria-label="Simulated baking curves"></svg><div class="legend" id="legend"></div></section>
+        <section class="card"><div class="chart-head"><div><h3>Live cross-section</h3><p>From center to surface · sample a moment in the run</p></div><span id="scrub-label">—</span></div><div class="sample-wrap"><svg id="cross-section" viewBox="0 0 760 124" role="img" aria-label="Temperature cross section through the loaf"></svg><div class="sample-scale"><span>CENTER</span><span>SURFACE</span></div></div><input type="range" id="scrub" min="0" max="100" value="100" disabled><div class="model-notes">Colours show <strong>relative temperature within this run</strong>, not true crust colour or predicted bread shape.</div></section>
+        <section class="card" id="composition"><h3>Material inventory</h3><p>Composition-weighted inputs to the simulation</p><div class="components" id="components"></div><div class="caption" id="computed-note"></div></section>
+        <section class="card compare-card"><div class="chart-head"><div><h3>Side-by-side trials</h3><p>Save two scenarios and compare outcomes</p></div><button type="button" id="clear-compare" class="ghost">Clear</button></div><div id="comparison" class="comparison">Save snapshots using A and B. The numbers are independent model runs, not measurements.</div></section>
+        <section class="card notes-card"><h3>Model boundaries</h3><ul id="warnings"><li>Run a scenario to inspect assumptions and unusual inputs.</li></ul><details><summary>What's actually calculated?</summary><p>Each time step conserves sensible heat across a 1D half-thickness mesh. Interior heat conduction is coupled to moisture diffusion; surface vapor loss consumes latent heat. Material heat capacities and conductivities vary with composition and temperature. Gelatinization, protein setting and browning are approximate kinetic indicators, not laboratory-validated predictions. Current geometry is fixed; there is no deforming crumb, internal vapor convection, fermentation gas transport or microbial safety model.</p><p>Computational model: <a href="./engine.py">Python engine</a> · <a href="./MODEL.md">Methods and references</a></p></details></section>
+      </section>
+    </div>
+    <footer>Research demonstrator · No backend · Experimental values are not cooking-safety guidance · <a href="./MODEL.md">Read the modelling assumptions</a></footer>
+  </main>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
