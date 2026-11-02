@@ -1,4 +1,4 @@
-# BakeLab 0.1 — Model specification and evidence
+# BakeLab 0.2 — Model specification and evidence
 
 **Status:** Working numerical prototype. Physics-inspired *screening model*, not a validated food-quality or food-safety prediction system.
 
@@ -6,7 +6,7 @@
 
 - **20 controllable ingredients**, with an approximate water/protein/fat/starch/sugar/fibre/mineral composition table (`ingredients.json`). Ingredient fractions are approximate class-level starting points, **not verified batch-specific USDA measurements**. Real flours, eggs, honey etc. vary.
 - **Adjustable:** oven setpoint −20–400 °C, heating time 0–300 minutes, 1D slab thickness 2–250 mm, starting temperature −20–100 °C, normalized oven water-vapour level 0–100%, still/forced air, ingredient amounts 0–100,000 g (large extremes outside confidence domain).
-- **Time series:** surface, mid-depth and centre temperature; bulk mass lost to evaporation; center/surface water fractions; proxy indices for starch gelatinization, protein setting and surface browning.
+- **Time series:** surface, mid-depth and centre temperature; modelled gas generation, retention and effective slab expansion; bulk mass lost to evaporation; center/surface water fractions; proxy indices for starch gelatinization, protein setting and surface browning.
 - **Spatial profiles:** time-resolved temperature and water fraction in an implicit finite-volume half-slab model; centre is insulated by symmetry, outside receives radiation + convection.
 - **Composition:** mass-weighted heat capacity and component volume-weighted conductivity estimates based on Choi–Okos property equations as summarized in ASHRAE. Water heat capacity uses a constant approximation; calculations clamp component-property temperature to 0–180 °C, explicitly extrapolated otherwise.
 
@@ -24,7 +24,7 @@ For each cell of thickness Δx, with mass/area mᵢ and specific heat cᵢ:
 
 Interface conductance `G = harmonic_mean(k_left, k_right)/Δx`. Radiation is linearized using `ε σ (T_o²+T_s²)(T_o+T_s)` and added to an adjustable forced-air / still-air convection coefficient. The implicit tridiagonal system is solved by Thomas elimination, avoiding explicit boundary instability at thin thicknesses.
 
-**Important limits:** no internal steam-driven convective transport, no changing sample thickness, no oven preheating model, no thermal contraction/expansion, no vapor condensation within pores, no moisture-dependent spatial deformation, no actual sphere/cylinder geometry. Batch *mass* scales the output quantity and implied surface area at a fixed thickness; it does not by itself alter the 1D heat trajectory. A loaf's real shape, uncovered surfaces and pan contact matter greatly.
+**Important limits:** no internal steam-driven convective transport, the *only* geometry change is effective thickness from a pan-constrained gas proxy (not actual free-loaf deformation), no oven preheating model, no thermal contraction/expansion, no vapor condensation within pores, no moisture-dependent spatial deformation, no actual sphere/cylinder geometry. Batch *mass* scales the output quantity and implied surface area at a fixed thickness; it does not by itself alter the 1D heat trajectory. A loaf's real shape, uncovered surfaces and pan contact matter greatly.
 
 ## Moisture model
 
@@ -46,7 +46,7 @@ Three indices are presented as **relative laboratory hypotheses**, not predictio
 - Protein thermal-setting proxy: sigmoidal temperature activation with first-order completion.
 - Surface browning index: temperature-sensitive kinetic surrogate, modulated by local dryness, protein and sugar concentrations and a rough soda alkalinity effect.
 
-Model does not yet simulate leavening gas formation, proofing, yeast metabolism, baking powder CO₂, dough elasticity, bubble collapse, crumb morphology, fat polymorphism or enzymatic hydrolysis. A slider for yeast or baking powder influences mixture composition/thermal properties, **not yet a realistic rise estimate**. Baking soda affects the provisional browning index, but acid–base reaction and CO₂ production are not modeled. The first scientific extension should be calibrated fermentation and gas-retention kinetics, not a cosmetic “fluffiness score.”
+The model now includes **illustrative yeast CO₂ and baking-powder CO₂ source terms**, an empirical bubble-retention factor and an effective-volume index that changes the thermal slab thickness. It does **not** simulate validated yeast metabolism, fluid elasticity, actual bubble pressure, bubble collapse, free-loaf deformation, crumb morphology, fat polymorphism or enzymatic hydrolysis. Baking soda affects the provisional browning index but its reaction with acid and CO₂ production are not modeled. These new submodels are exploratory: changing the yeast slider changes a calculated gas estimate, **not yet a validated rise prediction**.
 
 ## Model-source boundaries
 
@@ -74,3 +74,34 @@ Model does not yet simulate leavening gas formation, proofing, yeast metabolism,
 ## Safety
 
 Results do not determine doneness, safe heating schedules, pathogen destruction or allergen safety. Subzero freezing, pyrolysis/charring and very high sugar/fat phase transitions are outside the solver. Chemical-lab centrifuge samples must never be considered edible.
+
+## v0.2 gas-source and effective-volume extension
+
+### Yeast activity and proofing
+
+A continuous, bounded yeast activity curve peaks near 33°C and decreases above ~49°C. The rate also depends on a **parametric, uncalibrated** suppression by salt and concentrated sugar and a wetness gate. A finite carbohydrate budget limits total gas production; a separate proofing stage evaluates the model at a specified proof temperature and duration.
+
+The numerical CO₂ rate prefactor **0.0045 g CO₂/(g instant yeast·minute)** is a demonstration parameter, **not a measured strain-specific fit or published constant**. Literature supports the *qualitative* roles of yeast amount, temperature, substrate, and gas retention; our quantitative mapping needs direct measurement.
+
+### Baking powder and retention
+
+A provisional baking-powder gas yield of 0.12 g CO₂ per gram baking powder is released at temperature-dependent rates. Brands with different double-acting acid compositions can behave quite differently. Sodium bicarbonate is not separately counted without knowing the acid balance.
+
+The model converts retained gas moles into an estimated volume using the ideal gas equation at atmospheric pressure. It includes an approximate initial entrained-air fraction, smooth wetness/gluten/fat retention heuristics and temperature-dependent leakage. This **omits internal pressure, dissolved CO₂ and viscoelastic resistance** and caps volume at 3.5× the model's reference volume.
+
+### Coupling to heat and limitations
+
+The initial full slab thickness is interpreted **before proof**. The first-stage experimental assumption is a fixed planar footprint (like pan-confined material), so the predicted volume ratio changes slab thickness and therefore cell spacing in the implicit conductive heat solver. Mass and moisture inventories remain conserved **per projected area** for the heat/water transport calculation.
+
+The separate gas submodel **does not subtract vented CO₂ mass** from the displayed product mass: the mass-loss chart represents evaporated water only. In reality fermentation also transforms sugar into ethanol and other by-products. The present model is not a complete mass/energy-conserving reacting multiphase solver. At high rise, weak matrices, very high temperatures, or mostly liquid/oil mixtures, interpret expansion only as a sensitivity signal, not geometry.
+
+### Evidence motivating the model family (not its coefficients)
+
+- Fan, Mitchell & Blanshard (1999), [A model for the oven rise of dough during baking](https://doi.org/10.1016/S0260-8774(99)00070-9): gas generation, vapor partition and setting constrain oven rise.
+- [Proving of Bread Dough II: Measurement of Gas Production and Retention](https://doi.org/10.1205/096030803322437974) (2003): measurements support strong dependence on yeast concentration and proof temperature.
+- [Description of leavening of bread dough with mathematical modelling](https://doi.org/10.1016/j.jfoodeng.2007.02.014) (2007): stresses distinction between production and retention.
+- Zhang, Datta & Mukherjee (2005), [Transport processes and large deformation during baking of bread](https://doi.org/10.1002/aic.10518): full multiphase transport + viscoelastic deformation is a significantly more complex, experimentally validated target.
+
+## Browser compatibility note
+
+Pyodide v314.0.7 requires **module** web workers rather than classic `importScripts()`. Version 0.2 uses an ES module import. JavaScript syntax and Python tests passed, but the full browser startup still requires an interactive network-enabled browser integration test.

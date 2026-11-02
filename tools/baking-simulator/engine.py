@@ -11,11 +11,14 @@ import json
 import math
 from typing import Any
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 COMPONENTS = ("water", "protein", "fat", "starch", "sugar", "fiber", "ash")
 SIGMA = 5.670374419e-8  # W / (m² K⁴)
 LV = 2.26e6  # J / kg, reference latent heat of water
 WATER_CP = 4180.0  # J/(kg K)
+R_GAS = 8.314462618  # J/(mol K)
+CO2_G_MOL = 44.0095
+P_ATM = 101325.0
 
 
 def bounded(x: float, low: float, high: float) -> float:
@@ -103,13 +106,51 @@ def composition_of(catalog: list[dict], amounts: dict[str, float]) -> dict[str, 
             "baking_soda_g": amounts.get("baking_soda", 0.0), "cocoa_g": amounts.get("cocoa", 0.0)}
 
 
+
+
+def ferment_activity(temp_c: float) -> float:
+    """Bounded *illustrative* dry-yeast activity curve, not a validated strain fit."""
+    return (math.exp(-((temp_c-33.0)/21.0)**2)
+            * sigmoid((49.0-temp_c)/2.4) * sigmoid((temp_c-0.0)/4.0))
+
+def gas_retention_factor(recipe: dict) -> float:
+    """Empirical screening proxy for ability to retain bubbles in wheat matrices.
+
+    Not a gluten rheology/viscoelastic model; intentionally collapses toward
+    low retention for fluid, dry or non-wheat formulations.
+    """
+    c = recipe["fraction"]
+    gluten = sigmoid((recipe["gluten_fraction"]-0.035)/0.018)
+    wet_gate = sigmoid((c["water"]-0.23)/0.055) * sigmoid((0.70-c["water"])/0.09)
+    return bounded(0.025 + 0.84*gluten*wet_gate/(1+1.2*c["fat"]), 0.025, 0.88)
+
+def fermentation_rate(recipe: dict, temperature: float) -> float:
+    """Potential yeast CO2 generation [g/min], before substrate exhaustion.
+
+    Parametric hypothesis informed by known thermal and salt/sugar dependence;
+    the 0.0045 g CO2/(g instant yeast min) prefactor is NOT literature-calibrated.
+    """
+    yeast = recipe["yeast_g"]
+    if yeast <= 0:
+        return 0.0
+    c = recipe["fraction"]
+    f = max(recipe["flour_g"], 1.0)
+    sugar_per_flour = c["sugar"] * recipe["total_g"] / f
+    salt_per_flour = recipe["salt_g"] / f
+    osmotic = 1.0 / (1 + max(0.0,sugar_per_flour-0.10)**2/0.12**2)
+    saline = 1.0 / (1 + (salt_per_flour/0.07)**2)
+    water_gate = sigmoid((c["water"]-0.18)/0.045)
+    return 0.0045 * yeast * ferment_activity(temperature) * osmotic * saline * water_gate
+
 def validate_run(recipe: dict, settings: dict) -> tuple[dict, list[str]]:
     limits = {"oven_c": (-20, 400), "minutes": (0, 300), "thickness_mm": (2, 250),
-              "initial_c": (-20, 100), "steam_pct": (0, 100), "fan": (0, 1)}
+              "initial_c": (-20, 100), "steam_pct": (0, 100), "fan": (0, 1),
+              "proof_minutes": (0, 720), "proof_c": (-10, 55)}
     cfg = {}
     for key, (lo, hi) in limits.items():
         val = float(settings.get(key, {"oven_c": 220, "minutes": 35, "thickness_mm": 80,
-                                       "initial_c": 22, "steam_pct": 5, "fan": 0}[key]))
+                                       "initial_c": 22, "steam_pct": 5, "fan": 0,
+                                       "proof_minutes": 0, "proof_c": 25}[key]))
         if not math.isfinite(val) or not lo <= val <= hi:
             raise ValueError(f"{key}: expected a finite value in [{lo}, {hi}]")
         cfg[key] = val
@@ -140,6 +181,12 @@ def validate_run(recipe: dict, settings: dict) -> tuple[dict, list[str]]:
         w.append("Unusual thickness: effective 1D geometry and surface coefficients are uncertain.")
     if cfg["minutes"] > 120:
         w.append("Long heating: charring, pyrolysis, fire and large structural deformation are NOT simulated.")
+    if cfg["proof_minutes"] > 0 and cfg["proof_c"] > 45:
+        w.append("Proofing above 45°C: yeast activity and survival are uncertain; no kill-time history is modeled.")
+    if recipe["baking_powder_g"] > 0:
+        w.append("Baking-powder CO2 yield and temperature release are approximate; brand chemistry varies.")
+    if recipe["baking_soda_g"] > 0:
+        w.append("Baking soda gas requires acid or a reaction path; baking soda is NOT counted as a gas source here.")
     if recipe["total_g"] > 5000:
         w.append("Very large batch; actual geometry matters more than bulk mass.")
     return cfg, w
@@ -154,7 +201,7 @@ def simulate(payload: dict) -> dict:
     mass_kg = recipe["total_g"] / 1000.0
     n = int(bounded(round(cfg["thickness_mm"] / 3.5), 4, 26))
     L = cfg["thickness_mm"] / 2000.0  # half-thickness (m)
-    dx = L/n
+    dx = L/n  # initial half-thickness cell spacing
     initial_w = frac["water"]
     dry_comp = {k: (frac[k] / (1.0-initial_w)) if initial_w < 1 else 0.0 for k in COMPONENTS if k != "water"}
     density = 920.0  # effective dough density (kg m-3); approximate, held fixed
@@ -172,8 +219,33 @@ def simulate(payload: dict) -> dict:
     n_water = max(0.0, frac["water"] / 0.018015)
     n_solute = frac["sugar"] / 0.34230 + 1.8*recipe["salt_g"]/max(recipe["total_g"],1e-9)/0.05844
     water_activity_proxy = n_water/(n_water+n_solute) if n_water+n_solute else 0.0
-    # Yield m² full-slab projected area implied by initial dough mass; displayed
-    # output is mass fraction so area does not need to be known independently.
+    # Fixed-footprint (pan-constrained) screening geometry: gas expansion changes
+    # slab thickness, and effective conduction spacing, but not mass per area.
+    # This is NOT a full 3D free-loaf expansion / mechanics calculation.
+    retention = gas_retention_factor(recipe)
+    base_matrix_v = mass_kg / 1250.0  # assumed zero-porosity matrix density
+    entrained_fraction = 0.015 + 0.085*retention
+    entrained_air_v = base_matrix_v * entrained_fraction / (1-entrained_fraction)
+    v_reference = base_matrix_v + entrained_air_v
+    n_air = P_ATM * entrained_air_v / (R_GAS * (cfg["initial_c"]+273.15))
+    substrate_limit_g = 0.48*(frac["sugar"] * recipe["total_g"] + 0.045*recipe["flour_g"])
+    co2_generated_g = 0.0
+    n_co2 = 0.0
+    if cfg["proof_minutes"] > 0:
+        potential_g = fermentation_rate(recipe, cfg["proof_c"]) * cfg["proof_minutes"]
+        produced_g = min(substrate_limit_g, potential_g)
+        co2_generated_g += produced_g
+        n_co2 = (produced_g / CO2_G_MOL) * retention * math.exp(-cfg["proof_minutes"] * (1-retention) / 1600.0)
+    powder_co2_remaining_g = recipe["baking_powder_g"] * 0.12
+    def desired_volume_factor(temperature: float) -> float:
+        gas_v = (n_air+n_co2) * R_GAS * (max(-20.0,temperature)+273.15) / P_ATM
+        return (base_matrix_v + gas_v) / v_reference
+    volume_factor = bounded(desired_volume_factor(cfg["initial_c"]),0.5,3.5)
+    proof_rise_pct = (volume_factor-1.0)*100.0
+    max_volume_factor = volume_factor
+    volume_cap_hit = False
+    # Fermentation and baking-powder gas are screening submodels. Their source
+    # chemistry and CO2 venting mass are omitted from the water-only mass balance.
     total_s = cfg["minutes"] * 60.0
     # explicit heat + moisture stability bound, including extreme thickness
     cp0, k0 = physical_properties(frac, cfg["initial_c"])
@@ -204,10 +276,15 @@ def simulate(payload: dict) -> dict:
             "temp_profile": [round(t, 2) for t in temps],
             "water_profile": [round(x*100, 2) for x in moisture],
             "browning_index": round(100 * (1.0 - math.exp(-surface_brown)), 2),
+            "rise_pct": round((volume_factor-1.0)*100.0, 3),
+            "thickness_mm_est": round(cfg["thickness_mm"]*volume_factor, 3),
+            "co2_generated_g": round(co2_generated_g, 4),
+            "co2_retained_g": round(n_co2*CO2_G_MOL, 4),
         })
 
     record(0.0)
     for step in range(steps):
+        dx_current = dx * volume_factor  # the fixed footprint thickens on gas expansion
         # composition and properties are recomputed from each cell's retained water
         cps, ks = [], []
         for i in range(n):
@@ -231,7 +308,7 @@ def simulate(payload: dict) -> dict:
         h_eff = heat_transfer + h_rad
         face = [0.0] * (n + 1)
         for j in range(1, n):
-            face[j] = (2*ks[j-1]*ks[j] / max(ks[j-1]+ks[j], 1e-12)) / dx
+            face[j] = (2*ks[j-1]*ks[j] / max(ks[j-1]+ks[j], 1e-12)) / dx_current
         face[n] = h_eff
         # Vapor escaping from the outside surface, bounded by heat supplied
         # through its boundary and the nearby interior at the old time.
@@ -271,11 +348,42 @@ def simulate(payload: dict) -> dict:
         dm = [0.0] * n
         for j in range(1, n):
             D = (1e-9 + 7e-9 * sigmoid((0.5*(temps[j]+temps[j-1])-75)/15))
-            flux = D * (wet[j]/dx - wet[j-1]/dx) / dx  # kg / (m2 s), toward center
+            flux = D * (wet[j]-wet[j-1]) / (dx_current*dx_current)  # conservative per-area redistribution
             amount = bounded(flux * dt, -max(0.0, wet[j-1]*0.3), max(0.0, wet[j]*0.3))
             dm[j] -= amount
             dm[j-1] += amount
         wet = [max(0.0, wet[i] + dm[i]) for i in range(n)]
+        # CO2 sources, finite carbohydrate budget and effective bubble retention.
+        # The spatial average approximates yeast temperature; no cell-by-cell
+        # dissolved CO2 diffusion, rheology or explicit internal gas pressure.
+        bulk_temp = sum(temps) / n
+        substrate_left = max(0.0, substrate_limit_g-co2_generated_g)
+        ferment_g = min(substrate_left, fermentation_rate(recipe, bulk_temp)*dt/60.0)
+        co2_generated_g += ferment_g
+        n_co2 += ferment_g / CO2_G_MOL * retention
+        if powder_co2_remaining_g > 0:
+            # Empirical release over tens of seconds as batter heats; not a
+            # manufacturer-specific double-acting powder dissolution model.
+            triggered = sigmoid((bulk_temp-53.0)/8.0)
+            powder_release_g = powder_co2_remaining_g * (1-math.exp(-dt*triggered/100.0))
+            powder_co2_remaining_g -= powder_release_g
+            co2_generated_g += powder_release_g
+            n_co2 += powder_release_g / CO2_G_MOL * retention
+        # Leakage increases in weak dough, and as the heated crumb becomes
+        # increasingly open; dimensions are phenomenological, not calibrated.
+        leak_rate = (0.00004*(1-retention) +
+                     0.0007*sigmoid((bulk_temp-93.0)/6.0)*(1.0-retention*0.5))
+        n_co2 *= math.exp(-leak_rate*dt)
+        # A setting matrix resists further rise. In a pan-constrained geometry
+        # effective volume expansion maps to thickness and lengthens heat path.
+        target = desired_volume_factor(bulk_temp)
+        if target > 3.5: volume_cap_hit = True
+        target = bounded(target,0.5,3.5)
+        set_gate = sigmoid((bulk_temp-84.0)/6.0) * (0.25 + 0.75*sum(gel)/max(1,n))
+        response = (1.0-set_gate) * (1-math.exp(-dt/25.0))
+        volume_factor += (target-volume_factor)*response
+        volume_factor = bounded(volume_factor,0.5,3.5)
+        max_volume_factor = max(max_volume_factor, volume_factor)
         # phenomenological kinetic indices; not a measurement of doneness
         if recipe["flour_g"] > 0:
             for i in range(n):
@@ -297,6 +405,9 @@ def simulate(payload: dict) -> dict:
             record((step+1)*dt)
     moisture_profile = [100*wet[i]/(wet[i]+dry[i]) if wet[i]+dry[i] else 0 for i in range(n)]
     mass_loss = evaporated/original_kg_m2 * 100
+    if volume_cap_hit:
+        warnings.append("Gas model hit its 3.5× volume cap; the predicted volume is NOT credible for this recipe.")
+    warnings.append("Expansion uses uncalibrated CO2 generation, retention, and fixed-footprint thickness coupling; not a free-loaf or cake-structure prediction.")
     if recipe["flour_g"] < 1:
         warnings.append("Starch and protein transition indices are disabled without flour; use the temperature and moisture traces only.")
     if sum(wet)+dry_kg_m2 < 0.01*original_kg_m2:
@@ -322,7 +433,14 @@ def simulate(payload: dict) -> dict:
                     "end_mass_g": round(recipe["total_g"] * (1-evaporated/original_kg_m2), 2),
                     "browning_index": round(100*(1-math.exp(-surface_brown)), 2),
                     "starch_progress_pct": round(100*sum(gel)/n, 2),
-                    "protein_progress_pct": round(100*sum(protein)/n, 2)},
+                    "protein_progress_pct": round(100*sum(protein)/n, 2),
+                    "rise_pct": round(100*(volume_factor-1),3),
+                    "max_rise_pct": round(100*(max_volume_factor-1),3),
+                    "proof_rise_pct": round(proof_rise_pct,3),
+                    "thickness_mm_est": round(cfg["thickness_mm"]*volume_factor,3),
+                    "co2_generated_g": round(co2_generated_g,4),
+                    "co2_retained_g": round(n_co2*CO2_G_MOL,4),
+                    "gas_retention_factor": round(retention,4)},
         "profile": {"position_pct": [round(100*i/(n-1),2) for i in range(n)],
                     "temp_c": [round(t,3) for t in temps],
                     "water_pct": [round(x,3) for x in moisture_profile],
@@ -330,7 +448,7 @@ def simulate(payload: dict) -> dict:
         "timeline": timeline,
         "warnings": warnings,
         "metadata": {"grid_cells": n, "steps": steps, "dt_s": round(dt,5),
-                     "method": "1D implicit finite-volume heat + explicit moisture, approximate evaporation",
+                     "method": "1D implicit finite-volume heat + explicit moisture, gas-index thickness coupling (experimental)",
                      "reference": "Choi–Okos thermal properties; Purlis/Salvadori heat/moisture modelling"}
     }
 

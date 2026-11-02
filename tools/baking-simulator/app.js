@@ -4,7 +4,7 @@ const NS='http://www.w3.org/2000/svg';
 const fmt=(n,dec=1)=>Number(n).toLocaleString('en-CA',{maximumFractionDigits:dec,minimumFractionDigits:dec});
 const colors={center:'#b3f0b8',mid:'#7ebbe4',surface:'#f4c76b',water:'#7ebbe4',starch:'#c8b3ea',protein:'#f0a4a4',fat:'#f4c76b',sugar:'#d5b2e2',fiber:'#81c9ae',ash:'#a4a6a7'};
 const categories=['Grains','Liquids','Fats','Sweeteners','Leavening & salts','Starches & proteins'];
-const defaults={oven_c:220,minutes:35,thickness_mm:80,initial_c:22,steam_pct:5,fan:0};
+const defaults={oven_c:220,minutes:35,thickness_mm:80,initial_c:22,steam_pct:5,fan:0,proof_minutes:60,proof_c:26};
 const presets={
   bread:{bread_flour:500,water:340,salt:10,instant_yeast:5,sugar:10},
   rich:{bread_flour:500,milk:270,egg:100,butter:100,sugar:90,salt:9,instant_yeast:8},
@@ -15,6 +15,8 @@ const presets={
   oil:{olive_oil:900,ap_flour:80,water:15}
 };
 const settingDefs=[
+  ['proof_minutes','Proofing duration','min',0,720,1],
+  ['proof_c','Proofing temperature','°C',-10,55,0.5],
   ['oven_c','Oven temperature','°C',-20,400,1],
   ['minutes','Baking time','min',0,300,0.5],
   ['thickness_mm','Slab thickness','mm',2,250,1],
@@ -24,7 +26,7 @@ const settingDefs=[
 ];
 let catalog=[],amounts={},settings={...defaults},engineReady=false,last=null,requestId=0,renderedId=0,timer=null;
 let snapshots={A:null,B:null};
-const worker = new Worker('./worker.js');
+const worker = new Worker('./worker.js',{type:'module'});
 worker.onmessage = ({data}) => {
   if(data.type==='ready') {
     engineReady=true;$('engine-dot').classList.add('ready');$('engine-status').textContent='Python model ready';$('run').disabled=false;
@@ -73,8 +75,9 @@ function renderSettings(){const wrapper=$('process-controls');
     head.append(name,val);
     const slider=createElement('input',{type:'range',min,max,step,value:settings[key],'aria-label':label});
     slider.addEventListener('input',()=>{settings[key]=Number(slider.value);val.textContent=fmt(settings[key],step<1?1:0)+' '+unit;queueRun();});
-    row.append(head,slider);if(key==='thickness_mm')row.append(createElement('div',{class:'subtle',text:'1D slab approximation; effective mass determines area, not heating depth.'}));
+    row.append(head,slider);if(key==='thickness_mm')row.append(createElement('div',{class:'subtle',text:'Starting thickness before proof; a constrained slab model expands in thickness as gas accumulates.'}));
     if(key==='steam_pct')row.append(createElement('div',{class:'subtle',text:'* Vapour pressure / water saturation at 100°C; not oven RH.'}));
+    if(key==='proof_minutes')row.append(createElement('div',{class:'subtle',text:'Pre-bake fermentation. Empirical CO₂ rates only; no measured calibration.'}));
     wrapper.append(row);
   }
 }
@@ -88,7 +91,7 @@ function renderResult(){
   if(!last)return;
   const r=last.result,s=r.summary;
   const boxes=$('metrics').children;
-  const vals=[[fmt(s.center_c,2),'°C'],[fmt(s.surface_c,2),'°C'],[fmt(s.mass_loss_pct,2),'% of initial mass'],[fmt(s.browning_index,2),'relative; experimental']];
+  const vals=[[fmt(s.center_c,2),'°C'],[fmt(s.surface_c,2),'°C'],[fmt(s.mass_loss_pct,2),'% of initial mass'],[fmt(s.browning_index,2),'relative; experimental'],[fmt(s.rise_pct,2),'% volume proxy; uncalibrated'],[fmt(s.co2_generated_g,3),'g CO₂, potential chemistry']];
   vals.forEach((pair,i)=>{boxes[i].querySelector('strong').textContent=pair[0];boxes[i].querySelector('small').textContent=pair[1];});
   const segments=['water','starch','protein','fat','sugar','fiber','ash'];
   const comp=r.summary, proportions={water:comp.water_pct,starch:comp.starch_pct,protein:comp.protein_pct,fat:comp.fat_pct,sugar:comp.sugar_pct,fiber:comp.fiber_pct,ash:comp.ash_pct};
@@ -99,7 +102,7 @@ function renderResult(){
     const item=createElement('span');const dot=createElement('i');dot.style.background=colors[key];item.append(dot,`${key} `);const strong=createElement('b',{text:fmt(val,1)+'%'});item.append(strong);leg.append(item);
   });
   document.querySelectorAll('.component-legend').forEach(n=>n.remove());$('components').after(leg);
-  $('computed-note').textContent=`Initial ${fmt(s.total_g,1)} g → estimated ${fmt(s.end_mass_g,1)} g; ${r.metadata.grid_cells} spatial cells; ${r.metadata.steps.toLocaleString()} integration steps. Composition approximate; no measured calibration.`;
+  $('computed-note').textContent=`Initial ${fmt(s.total_g,1)} g → estimated ${fmt(s.end_mass_g,1)} g water-loss-only; effective slab thickness ${fmt(s.thickness_mm_est,1)} mm. Proof-only rise ${fmt(s.proof_rise_pct,1)}%; retention factor ${fmt(s.gas_retention_factor,3)}. ${r.metadata.grid_cells} spatial cells, ${r.metadata.steps.toLocaleString()} steps. Gas chemistry is an uncalibrated approximation and CO₂ venting is excluded from mass totals.`;
   $('warnings').replaceChildren(...r.warnings.map(text=>createElement('li',{text})));drawChart();updateScrub(100);renderComparison();
 }
 function svgEl(tag,attrs={}){const e=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
@@ -110,6 +113,8 @@ function drawChart(){
  if(metric==='temp')lines=[['center_c','Center',colors.center],['mid_c','Mid-depth',colors.mid],['surface_c','Surface',colors.surface]];
  else if(metric==='moisture')lines=[['center_moisture_pct','Center',colors.center],['surface_moisture_pct','Surface',colors.blue||colors.mid]];
  else if(metric==='mass')lines=[['mass_loss_pct','Water lost',colors.surface]];
+ else if(metric==='rise')lines=[['rise_pct','Estimated expansion',colors.center]];
+ else if(metric==='gas')lines=[['co2_generated_g','CO₂ generated, g',colors.surface],['co2_retained_g','CO₂ retained, g',colors.mid]];
  else if(metric==='change')lines=[['starch_progress_pct','Gelatinization proxy',colors.center],['protein_progress_pct','Protein proxy',colors.mid]];
  else lines=[['browning_index','Browning index',colors.surface]];
  const all=lines.flatMap(([key])=>t.map(row=>row[key]));let ymax=Math.max(1,...all);let ymin=Math.min(0,...all);
@@ -142,13 +147,13 @@ function updateScrub(val){if(!last)return;
  [['CENTER',frame.center_c,14],['SURFACE',frame.surface_c,620]].forEach((a,i)=>{let text=svgEl('text',{x:a[2],y:119,fill:'#9cafa9','font-size':11});text.textContent=`${a[0]} ${fmt(a[1],1)} °C`;svg.append(text);});
 }
 function renderComparison(){const a=snapshots.A,b=snapshots.B;if(!a&&!b){$('comparison').textContent='Save snapshots using A and B. The numbers are independent model runs, not measurements.';return;}
- const rows=[['Oven (°C)',x=>x.inputs.settings.oven_c],['Bake (min)',x=>x.inputs.settings.minutes],['Water in mix (%)',x=>x.result.summary.water_pct],['Center (°C)',x=>x.result.summary.center_c],['Surface (°C)',x=>x.result.summary.surface_c],['Mass lost (%)',x=>x.result.summary.mass_loss_pct],['Browning index',x=>x.result.summary.browning_index]];
+ const rows=[['Oven (°C)',x=>x.inputs.settings.oven_c],['Bake (min)',x=>x.inputs.settings.minutes],['Proof (min)',x=>x.inputs.settings.proof_minutes],['Water in mix (%)',x=>x.result.summary.water_pct],['Center (°C)',x=>x.result.summary.center_c],['Surface (°C)',x=>x.result.summary.surface_c],['Mass lost (%)',x=>x.result.summary.mass_loss_pct],['Rise proxy (%)',x=>x.result.summary.rise_pct],['CO₂ formed (g)',x=>x.result.summary.co2_generated_g],['Browning index',x=>x.result.summary.browning_index]];
  const table=createElement('table');const head=createElement('tr');['Metric','A','B','Δ B–A'].forEach(x=>head.append(createElement('th',{text:x})));table.append(head);
  for(const [label,get] of rows){const tr=createElement('tr');tr.append(createElement('td',{text:label}));const av=a?get(a):null,bv=b?get(b):null;[av,bv,av!=null&&bv!=null?bv-av:null].forEach(x=>tr.append(createElement('td',{text:x==null?'—':fmt(x,2)})));table.append(tr);}
  $('comparison').replaceChildren(table);
 }
 function download(name,text,contentType){const blob=new Blob([text],{type:contentType});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-function exportCSV(){if(!last)return;const arr=last.result.timeline;const keys=['minute','center_c','mid_c','surface_c','mass_loss_pct','center_moisture_pct','surface_moisture_pct','starch_progress_pct','protein_progress_pct','browning_index'];const rows=[keys.join(','),...arr.map(o=>keys.map(k=>o[k]).join(','))];download('bakelab-timeseries.csv',rows.join('\n'),'text/csv');}
+function exportCSV(){if(!last)return;const arr=last.result.timeline;const keys=['minute','center_c','mid_c','surface_c','mass_loss_pct','center_moisture_pct','surface_moisture_pct','starch_progress_pct','protein_progress_pct','browning_index','rise_pct','thickness_mm_est','co2_generated_g','co2_retained_g'];const rows=[keys.join(','),...arr.map(o=>keys.map(k=>o[k]).join(','))];download('bakelab-timeseries.csv',rows.join('\n'),'text/csv');}
 async function init(){
  try {catalog=await fetch('./ingredients.json').then(r=>{if(!r.ok)throw Error('Cannot load ingredients.json');return r.json();});} catch(e){showError('Could not load ingredients. Serve with python -m http.server or GitHub Pages. '+e.message);return;}
  for(const item of catalog)amounts[item.id]=item.amount;

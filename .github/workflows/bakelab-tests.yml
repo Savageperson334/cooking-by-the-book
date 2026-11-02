@@ -1,0 +1,20 @@
+name: BakeLab Python tests
+on:
+  push:
+    paths:
+      - 'tools/baking-simulator/**'
+      - '.github/workflows/bakelab-tests.yml'
+  pull_request:
+    paths:
+      - 'tools/baking-simulator/**'
+      - '.github/workflows/bakelab-tests.yml'
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check physics and UI wiring
+        run: python -m unittest discover -s tools/baking-simulator/tests -v

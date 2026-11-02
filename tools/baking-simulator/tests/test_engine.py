@@ -83,6 +83,53 @@ class TestSolver(unittest.TestCase):
         r=run(oven_c=22,initial_c=22,minutes=15,steam_pct=100)
         self.assertAlmostEqual(r['summary']['center_c'],22,delta=.01)
 
+    def test_proofing_produces_gas_and_expansion(self):
+        base=run(proof_minutes=0)['summary']
+        proof=run(proof_minutes=60,proof_c=29)['summary']
+        self.assertGreater(proof['co2_generated_g'],base['co2_generated_g'])
+        self.assertGreater(proof['proof_rise_pct'],0)
+        self.assertGreater(proof['rise_pct'],base['rise_pct'])
+        self.assertGreater(proof['thickness_mm_est'],base['thickness_mm_est'])
+
+    def test_yeast_removal_removes_fermentation(self):
+        r=run({'bread_flour':500,'water':340,'salt':10},proof_minutes=180)['summary']
+        self.assertEqual(r['co2_generated_g'],0)
+        self.assertEqual(r['co2_retained_g'],0)
+
+    def test_salt_extreme_inhibits_fermentation(self):
+        lean=run({'bread_flour':500,'water':340,'instant_yeast':5,'salt':10},proof_minutes=50)['summary']
+        salty=run({'bread_flour':500,'water':340,'instant_yeast':5,'salt':150},proof_minutes=50)['summary']
+        self.assertGreater(lean['co2_generated_g'],salty['co2_generated_g'])
+
+    def test_chemical_leavener_is_gas_source(self):
+        plain=run({'ap_flour':250,'milk':200,'egg':100},oven_c=185,minutes=35,thickness_mm=40)['summary']
+        leavened=run({'ap_flour':250,'milk':200,'egg':100,'baking_powder':10},oven_c=185,minutes=35,thickness_mm=40)['summary']
+        self.assertGreater(leavened['co2_generated_g'],plain['co2_generated_g'])
+        self.assertGreater(leavened['rise_pct'],plain['rise_pct'])
+
+    def test_baking_soda_not_assumed_reactive_without_acid(self):
+        r=run({'water':200,'baking_soda':40},minutes=60)
+        self.assertEqual(r['summary']['co2_generated_g'],0)
+        self.assertTrue(any('Baking soda gas' in w for w in r['warnings']))
+
+    def test_extreme_proof_bounded_and_finite(self):
+        r=run({'bread_flour':500,'water':340,'instant_yeast':100},proof_minutes=720,proof_c=35,oven_c=400,minutes=300,thickness_mm=2)
+        s=r['summary']
+        self.assertTrue(math.isfinite(s['rise_pct']))
+        self.assertTrue(math.isfinite(s['center_c']))
+        self.assertTrue(-50 <= s['rise_pct'] <= 250)
+
+    def test_small_yeast_change_continuous(self):
+        a=run({'bread_flour':500,'water':340,'instant_yeast':5.0},proof_minutes=60)['summary']['proof_rise_pct']
+        b=run({'bread_flour':500,'water':340,'instant_yeast':5.1},proof_minutes=60)['summary']['proof_rise_pct']
+        self.assertGreater(b,a)
+        self.assertLess(b-a,5)
+
+    def test_gas_timeline_tracks_final_summary(self):
+        r=run(proof_minutes=70)
+        self.assertAlmostEqual(r['timeline'][-1]['rise_pct'],r['summary']['rise_pct'],delta=.001)
+        self.assertAlmostEqual(r['timeline'][-1]['co2_generated_g'],r['summary']['co2_generated_g'],delta=.001)
+
     def test_invalid_amount_rejected(self):
         with self.assertRaises(ValueError):run({'bread_flour':-12})
         with self.assertRaises(ValueError):run({'bread_flour':float('nan')})
