@@ -12,15 +12,15 @@ class TestUIContract(unittest.TestCase):
         self.assertNotIn('importScripts(', js)
         # A failed CDN download must surface a readable message, not a generic worker error.
         self.assertIn('Could not download the Python runtime', js)
-        self.assertIn("new Worker('./worker.js?ui=0.13.1',{type:'module'})", app)
+        self.assertIn("new Worker('./worker.js?ui=0.13.2',{type:'module'})", app)
 
     def test_ui_release_uses_versioned_assets(self):
         html = (HERE / 'index.html').read_text()
         app = (HERE / 'app.js').read_text()
-        self.assertIn('BUILD 0.13.1', html)
-        self.assertIn('./app.js?ui=0.13.1', html)
-        self.assertIn('./style.css?ui=0.13.1', html)
-        self.assertIn('./worker.js?ui=0.13.1', app)
+        self.assertIn('BUILD 0.13.2', html)
+        self.assertIn('./app.js?ui=0.13.2', html)
+        self.assertIn('./style.css?ui=0.13.2', html)
+        self.assertIn('./worker.js?ui=0.13.2', app)
         # SVG labels must not be reintroduced: show metrics below the pan.
         self.assertNotIn('ANGLED PAN · ILLUSTRATIVE', app)
         for identifier in ('scene-oven', 'scene-thickness',
@@ -124,6 +124,24 @@ class TestUIContract(unittest.TestCase):
         self.assertNotIn("0.15*ovenGlow", js)
         self.assertNotIn("radial-gradient(circle at 50% 8%", css)
         self.assertIn("linear-gradient(180deg,#1a2529", css)
+
+    def test_bread_animation_has_no_instant_collapse_geometry_step(self):
+        js=(HERE/'app.js').read_text()
+        self.assertIn('const collapseBlend=smoothstep(42,94,rise)',js)
+        self.assertIn('crown*=1-0.78*d.collapseBlend',js)
+        self.assertIn('let sag = d.collapseBlend*(18+0.18*d.rise)',js)
+        self.assertNotIn('if(d.collapsed) crown*=0.22',js)
+        self.assertNotIn('d.collapsed ? 18+0.18*d.rise : 0',js)
+        self.assertIn('function interpolateSceneFrame(frames,percent)',js)
+        self.assertIn('drawBakeScene(sceneFrame)',js)
+        self.assertIn('Number.isFinite(a[key])',js)
+
+    def test_javascript_syntax_when_node_available(self):
+        import shutil,subprocess
+        if shutil.which('node') is None:
+            self.skipTest('Node.js unavailable')
+        proc=subprocess.run(['node','--check',str(HERE/'app.js')],capture_output=True,text=True)
+        self.assertEqual(proc.returncode,0,proc.stderr)
 
     def test_svg_text_helper_avoids_invalid_append_return(self):
         js=(HERE/'app.js').read_text()

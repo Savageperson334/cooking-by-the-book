@@ -3,6 +3,8 @@ const $ = id => document.getElementById(id);
 const NS='http://www.w3.org/2000/svg';
 const fmt=(n,dec=1)=>Number(n).toLocaleString('en-CA',{maximumFractionDigits:dec,minimumFractionDigits:dec});
 const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+// Continuous easing avoids a sudden SVG snap when a model index crosses a threshold.
+const smoothstep=(a,b,x)=>{const t=clamp((x-a)/(b-a),0,1);return t*t*(3-2*t);};
 const colors={center:'#b3f0b8',mid:'#7ebbe4',surface:'#f4c76b',water:'#7ebbe4',starch:'#c8b3ea',protein:'#f0a4a4',fat:'#f4c76b',sugar:'#d5b2e2',fiber:'#81c9ae',ash:'#a4a6a7',steam:'#dcebe8',dark:'#203236'};
 const ingredientVisuals={
   bread_flour:'#d7c3a0',ap_flour:'#ddd1b8',whole_wheat:'#a57e55',rye_flour:'#876547',oats:'#ccb48b',
@@ -78,7 +80,7 @@ let catalog=[],amounts={},settings={...defaults},engineReady=false,last=null,req
 let snapshots={A:null,B:null};
 let playing=false,playHandle=0,playStart=0,playOrigin=0,playValue=100;
 const BAKE_PLAY_DURATION=16000; // milliseconds for 0..100 at 1x
-const worker = new Worker('./worker.js?ui=0.13.1',{type:'module'});
+const worker = new Worker('./worker.js?ui=0.13.2',{type:'module'});
 worker.onmessage = ({data}) => {
   if(data.type==='ready') {
     engineReady=true;$('engine-dot').classList.add('ready');$('engine-status').textContent='Python model ready';$('run').disabled=false;
@@ -416,7 +418,18 @@ function visualDescriptor(frame){
   const cakey = richness>0.16 && bpRatio>0.012 && protein<0.12;
   const domed = rise>12 && !liquidish;
   const overexpanded = rise>60 && (protein<0.11 || wetness>0.68);
-  const collapsed = overexpanded && (surface>165 || frame.co2_retained_g < frame.co2_generated_g*0.55 || massLoss>12);
+  // Former boolean collapse rule abruptly cut crown height by 78% and added
+  // a large sag at a threshold; interpolate the purely illustrative settling.
+  const weakMatrix=clamp((0.17-protein)/0.08,0,1);
+  const wetMatrix=clamp((wetness-0.54)/0.24,0,1);
+  const gasLost=frame.co2_generated_g>1e-7
+    ? 1-clamp(frame.co2_retained_g/frame.co2_generated_g,0,1):0;
+  const collapseDrive=Math.max(smoothstep(140,195,surface),
+                               smoothstep(0.35,0.88,gasLost),
+                               smoothstep(7,22,massLoss));
+  const collapseBlend=smoothstep(42,94,rise)
+    *Math.max(weakMatrix,wetMatrix)*collapseDrive;
+  const collapsed=collapseBlend>0.55;
   const cracked = Number(frame.physical_crack_risk_pct||0)>35 && !liquidish;
   const burnt = liquidMode ? brown>78 : brown>78 || surface>215;
   const underbaked = center<86 && surface<140;
@@ -465,7 +478,7 @@ function visualDescriptor(frame){
   }
 
   if(highHeatResidue) note=`High-heat screening: remaining ${fmt(frame.estimated_remaining_mass_g,2)} g · char ${fmt(charG,2)} g · mineral ${fmt(ashG,2)} g · not a fire prediction.`;
-  return {thermalStage,charred,ashy,nearlyGone,highHeatResidue,charG,ashG,orgG,water,fat,protein,sugar,starch,wetness,richness,dryness,liquidMode,residueState,isResidue,isDryResidue,biphasic,liquidish,powdery,oily,sugary,salty,cakey,domed,overexpanded,collapsed,cracked,burnt,underbaked,boiling,label,note,saltRatio,yeastRatio,bpRatio,rise,brown,surface,center,massLoss};
+  return {thermalStage,charred,ashy,nearlyGone,highHeatResidue,charG,ashG,orgG,water,fat,protein,sugar,starch,wetness,richness,dryness,liquidMode,residueState,isResidue,isDryResidue,biphasic,liquidish,powdery,oily,sugary,salty,cakey,domed,overexpanded,collapsed,collapseBlend,cracked,burnt,underbaked,boiling,label,note,saltRatio,yeastRatio,bpRatio,rise,brown,surface,center,massLoss};
 }
 function drawBakeScene(frame){
   const svg=$('bake-scene'); if(!svg || !last) return; svg.replaceChildren();
@@ -506,7 +519,7 @@ function drawBakeScene(frame){
   topY=clamp(topY,85,panTop+panHeight-8);
   let crown=clamp((d.rise*0.36)+(d.cakey?8:0)+(d.liquidish?-10:0)-(d.powdery?6:0),0,50);
   const visual=mixtureVisual(frame,d);
-  if(d.collapsed) crown*=0.22;
+  crown*=1-0.78*d.collapseBlend; // smooth sag, no instant crown collapse
   if(d.liquidMode || d.oily || d.sugary) crown=0;
   const spill=Math.max(0, 128-topY);
   const crust=d.liquidMode ? (d.liquidish?toneColor(visual.top,'#fefefe',0.05):toneColor(visual.top, d.burnt?'#1b0e09':'#8b512e',clamp(d.brown/100,0,1)*0.92)) : toneColor(visual.top, d.burnt?'#261713':'#8f5831',clamp((d.brown/100)+(d.surface-120)/150,0,1)*0.45);
@@ -549,7 +562,7 @@ function drawBakeScene(frame){
   }
   const topBase = topY;
   let cp1=leftInner+(rightInner-leftInner)*0.27, cp2=leftInner+(rightInner-leftInner)*0.73;
-  let sag = d.collapsed ? 18+0.18*d.rise : 0;
+  let sag = d.collapseBlend*(18+0.18*d.rise); // continuous deformation
   let ripple = d.liquidish ? 4+2*Math.sin(frame.minute*0.35) : 0;
   let topPath=`M ${leftInner} ${topBase} C ${cp1} ${topBase-crown+ripple} ${cp2} ${topBase-crown+ripple+sag} ${rightInner} ${topBase}`;
   if(d.liquidish || d.oily || (d.sugary&&!d.isResidue)) topPath=`M ${leftInner} ${topBase} C ${cp1} ${topBase+ripple} ${cp2} ${topBase-ripple} ${rightInner} ${topBase}`;
@@ -768,13 +781,33 @@ function startPlayback(){
   playHandle=requestAnimationFrame(stepPlayback);
 }
 
+function interpolateSceneFrame(frames,percent){
+  const pos=clamp(Number(percent)/100,0,1)*Math.max(0,frames.length-1);
+  const lo=Math.floor(pos),hi=Math.min(frames.length-1,lo+1),mix=pos-lo;
+  const a=frames[lo],b=frames[hi];
+  if(!b||lo===hi||mix<1e-7)return a;
+  const output={...(mix<0.5?a:b)};
+  // Interpolate numeric state only; discrete material labels remain discrete.
+  for(const key of Object.keys(a)){
+    if(typeof a[key]==='number'&&Number.isFinite(a[key])
+       &&typeof b[key]==='number'&&Number.isFinite(b[key])){
+      output[key]=a[key]+(b[key]-a[key])*mix;
+    }else if(Array.isArray(a[key])&&Array.isArray(b[key])
+      &&a[key].length===b[key].length
+      &&a[key].every(Number.isFinite)&&b[key].every(Number.isFinite)){
+      output[key]=a[key].map((v,i)=>v+(b[key][i]-v)*mix);
+    }
+  }
+  return output;
+}
 function updateScrub(val){if(!last)return;
  playValue=clamp(Number(val),0,100);
  $('scrub').disabled=false;$('scrub').value=playValue;
  $('scrub-scene').disabled=false;$('scrub-scene').value=playValue;
- const frames=last.result.timeline;const idx=Math.min(frames.length-1,Math.round((frames.length-1)*val/100));const frame=frames[idx];
+ const frames=last.result.timeline;const idx=Math.min(frames.length-1,Math.round((frames.length-1)*playValue/100));const frame=frames[idx];
+ const sceneFrame=interpolateSceneFrame(frames,playValue);
  $('scrub-label').textContent=`${fmt(frame.minute,1)} min / ${fmt(last.result.settings.minutes,1)} min`;
- $('scene-clock').textContent=`${fmt(frame.minute,1)} / ${fmt(last.result.settings.minutes,1)} min`;
+ $('scene-clock').textContent=`${fmt(sceneFrame.minute,1)} / ${fmt(last.result.settings.minutes,1)} min`;
  const materialNote=$('scene-material-note');
  if(last.result.summary.liquid_mode){
    materialNote.hidden=false;
@@ -794,7 +827,7 @@ function updateScrub(val){if(!last)return;
    // inflating its calculated height in the pan drawing.
    materialNote.style.borderLeft=`7px solid ${mixtureVisual(frame,visualDescriptor(frame)).top}`;
  }else{materialNote.hidden=true;materialNote.textContent='';}
- drawBakeScene(frame);
+ drawBakeScene(sceneFrame);
  const svg=$('cross-section');svg.replaceChildren();
  const temp=frame.temp_profile||last.result.profile.temp_c;const mn=Math.min(last.result.settings.initial_c,last.result.settings.oven_c,0);const mx=Math.max(last.result.settings.initial_c,last.result.settings.oven_c,100);const n=temp.length;
  for(let i=0;i<n;i++){

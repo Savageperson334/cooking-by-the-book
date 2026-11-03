@@ -1,6 +1,6 @@
 # BakeLab — experimental browser baking simulator
 
-**Running prototype v0.13.0** in the [Cooking by the Book](../../README.md) experiment toolkit.
+**Running prototype v0.13.2** in the [Cooking by the Book](../../README.md) experiment toolkit.
 
 [Open browser app](index.html) · [Scientific methods and limitations](MODEL.md) · [Python engine](engine.py) · [20-ingredient catalogue](ingredients.json)
 
@@ -244,3 +244,8 @@ The physics is unchanged. The app got shorter and plainer:
 - **Presets are now two groups: Breads and Absurd.** Breads (lean loaf, rich dough, cake, baguette, roll, flatbread, focaccia, round loaf) each set a sensible bake. Absurd adds a brick fired at 600 °C, a loaf baked on Everest and a 24-hour bake to the old extremes.
 - **Shorter on-screen text:** one hydration chip instead of a row of baker's percentages; no citations or colour-change score on screen (the sources stay in [MODEL.md](MODEL.md)); a single caution under the oven slider past 300 °C.
 
+
+
+## v0.13.2 — smooth lean-bread animation
+
+The visual model previously used a binary collapse threshold: once rise exceeded 60% and the loaf was hot or losing gas, the SVG crown instantly shrank by 78% and a large sag appeared. This could make an otherwise continuously expanding lean loaf suddenly jump during Replay bake. The illustrative settling is now a gradual eased blend of rise, estimated structure, temperature, relative gas loss and water loss; scene numeric fields are interpolated between sampled simulation frames during playback. Data charts and exported physics history still use the original solver results. This is a **visual continuity fix**, not validated bread-collapse mechanics. Automated UI tests check for removal of the old binary snap, numeric interpolation and JavaScript syntax.
