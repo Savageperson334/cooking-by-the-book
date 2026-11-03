@@ -76,10 +76,18 @@ class Pans(unittest.TestCase):
         self.assertLess(t['baking_stone'], t['dark_steel_pan'])
         self.assertLess(t['dark_steel_pan'], t['aluminium_sheet'])  # shiny aluminium absorbs little radiation
 
-    def test_dark_pan_browns_bottom_more_than_shiny_or_glass(self):
-        b = {p: self.flat(p)['summary']['bottom_browning_index'] for p in ('dark_steel_pan', 'glass_dish', 'aluminium_sheet')}
-        self.assertGreater(b['dark_steel_pan'], b['glass_dish'])
-        self.assertGreater(b['glass_dish'], b['aluminium_sheet'])
+    def test_dark_pan_bottom_runs_hotter_than_glass_then_shiny(self):
+        face = {p: self.flat(p)['timeline'][len(self.flat(p)['timeline'])//3]['bottom_face_c']
+                for p in ('dark_steel_pan', 'glass_dish', 'aluminium_sheet')}
+        self.assertGreater(face['dark_steel_pan'], face['glass_dish'])
+        self.assertGreater(face['glass_dish'], face['aluminium_sheet'])
+
+    def test_hot_steel_browns_a_thin_base_and_cold_aluminium_does_not(self):
+        pizza = {'bread_flour': 300, 'water': 195, 'salt': 8, 'instant_yeast': 2}
+        steel = run(pizza, pan='baking_steel', thickness_mm=8, minutes=8, oven_c=280, proof_minutes=0)
+        sheet = run(pizza, pan='aluminium_sheet', thickness_mm=8, minutes=8, oven_c=280, proof_minutes=0)
+        self.assertGreater(steel['summary']['bottom_browning_index'], 5.0)
+        self.assertLess(sheet['summary']['bottom_browning_index'], 1.0)
 
     def test_sealed_bottom_loses_less_water_than_open_faces(self):
         sealed = self.flat('glass_dish')['summary']['mass_loss_pct']

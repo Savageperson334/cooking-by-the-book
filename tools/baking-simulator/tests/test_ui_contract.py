@@ -12,15 +12,15 @@ class TestUIContract(unittest.TestCase):
         self.assertNotIn('importScripts(', js)
         # A failed CDN download must surface a readable message, not a generic worker error.
         self.assertIn('Could not download the Python runtime', js)
-        self.assertIn("new Worker('./worker.js?ui=0.11.0',{type:'module'})", app)
+        self.assertIn("new Worker('./worker.js?ui=0.12.0',{type:'module'})", app)
 
     def test_ui_release_uses_versioned_assets(self):
         html = (HERE / 'index.html').read_text()
         app = (HERE / 'app.js').read_text()
-        self.assertIn('BUILD 0.11.0', html)
-        self.assertIn('./app.js?ui=0.11.0', html)
-        self.assertIn('./style.css?ui=0.11.0', html)
-        self.assertIn('./worker.js?ui=0.11.0', app)
+        self.assertIn('BUILD 0.12.0', html)
+        self.assertIn('./app.js?ui=0.12.0', html)
+        self.assertIn('./style.css?ui=0.12.0', html)
+        self.assertIn('./worker.js?ui=0.12.0', app)
         # SVG labels must not be reintroduced: show metrics below the pan.
         self.assertNotIn('ANGLED PAN · ILLUSTRATIVE', app)
         for identifier in ('scene-oven', 'scene-thickness',
@@ -43,6 +43,31 @@ class TestUIContract(unittest.TestCase):
         self.assertIn("get('geometry.py')", js)
         self.assertIn("/home/pyodide/geometry.py", js)
         self.assertIn("searchParams.get('ui')", js)
+
+    def test_shape_presets_set_the_bake_and_use_real_ids(self):
+        import re, sys
+        sys.path.insert(0, str(HERE))
+        import geometry
+        app = (HERE / 'app.js').read_text()
+        html = (HERE / 'index.html').read_text()
+        block = app[app.index('const presetProcess={'):app.index('};', app.index('const presetProcess={'))]
+        for name in ('baguette', 'roll', 'flatbread', 'focaccia', 'pagnotta'):
+            self.assertIn(f'value="{name}"', html)
+            self.assertIn(f'{name}:{{', block)
+        for shape in re.findall(r"shape:'(\w+)'", block):
+            self.assertIn(shape, geometry.SHAPES)
+        for pan in re.findall(r"pan:'(\w+)'", block):
+            self.assertIn(pan, geometry.PANS)
+
+    def test_milestones_bakers_percent_and_altitude_are_wired(self):
+        app = (HERE / 'app.js').read_text()
+        html = (HERE / 'index.html').read_text()
+        for el in ('id="milestones"', 'id="crust-swatch"', 'id="bakers-pct"'):
+            self.assertIn(el, html)
+        self.assertIn('renderMilestones();', app)
+        self.assertIn("['altitude_m','Altitude above sea level','m',-500,5000,50]", app)
+        self.assertIn('summary.headline_warning', app)
+        self.assertIn('not</strong> a food-safety check', html)
 
     def test_worker_skips_superseded_runs(self):
         js = (HERE / 'worker.js').read_text()

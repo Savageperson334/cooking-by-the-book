@@ -1,6 +1,6 @@
 # BakeLab — experimental browser baking simulator
 
-**Running prototype v0.11.0** in the [Cooking by the Book](../../README.md) experiment toolkit.
+**Running prototype v0.12.0** in the [Cooking by the Book](../../README.md) experiment toolkit.
 
 [Open browser app](index.html) · [Scientific methods and limitations](MODEL.md) · [Python engine](engine.py) · [20-ingredient catalogue](ingredients.json)
 
@@ -213,4 +213,24 @@ A solid pan is solved as its own temperature. It heats from the oven according t
 The pans rank as bakers would expect: preheated steel and stone heat the bottom fastest, then dark steel, then glass, with shiny aluminium slowest. Re-entering the two [reference bakes](../../research/reference-bakes.md) with their real supports refitted the steam term on the round loaf (rack). The held-out glass-dish bake's water loss now matches: 14.5 g against 15.0 g measured, where it was 20.7 g.
 
 Python files and `ingredients.json` are now fetched with the same `?ui=` release tag as the page, so a new release never runs a cached older engine.
+
+
+## v0.12.0 — altitude, drying, published browning rates and a friendlier app
+
+**Physics**
+- **Altitude** (Process tab, −500 to 5,000 m). Lower air pressure lowers the boiling point (95 °C at 1,500 m), caps crumb and liquids there, and lets gas expand more.
+- **Drying** uses a measured bread-crust water-activity curve (Hamdami et al. 2006). The crust dries more slowly as it gets drier, as in real baking.
+- **Browning** uses published bread-crust kinetics (Zanoni et al. 1995). It only starts above ~120 °C and below water activity ~0.6 (Purlis & Salvadori 2009), and it is driven by the crust's skin temperature, not the average of the outer 1–2 mm. Inside 180–220 °C, the whole-loaf colour change ΔE of Purlis & Salvadori (2007) is also shown.
+
+**App**
+- **New presets that also set the bake:** baguette (cylinder, steamed oven), soft dinner roll (ball), flatbread on a baking steel, focaccia in a dark pan, and the round loaf on a rack from the published test bake.
+- **Baker's percentages** under the formula: hydration, salt, yeast, sugar and fat relative to flour.
+- **Bake milestones** card on Results:
+  - when the coldest point gets within 4 °C of boiling
+  - when the crust starts to brown
+  - final top and bottom browning, crust skin temperature and water loss
+  - an illustrative crust-colour swatch
+- **Preview drawing** follows the shape and support: a baguette on the rack, a bun-shaped roll, and a flat loaf on a stone, steel, sheet or paper. Only a deep pan is drawn as a pan.
+- **Temperature chart** adds crust-skin and bottom lines.
+- **Preview warning** shows only the run's most important problem. The general caveats stay under Results → Model boundaries.
 

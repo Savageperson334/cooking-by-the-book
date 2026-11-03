@@ -11,7 +11,7 @@ import json
 import math
 from typing import Any
 
-VERSION = "0.11.0"
+VERSION = "0.12.0"
 from liquids import liquid_kind, simulate_liquid
 from thermal_breakdown import annotate_high_heat
 from physical_fracture import annotate_fracture
@@ -113,18 +113,68 @@ def property_function(dry_comp: dict):
     return f
 
 
-def _vapor_pressure(temp_c: float) -> float:
-    """Antoine correlation for water at 1–100°C, capped at 1 atm."""
-    t = bounded(temp_c, 1.0, 100.0)
-    return min(101325.0, 133.322368 * 10 ** (8.07131 - 1730.63 / (233.426 + t)))
+def _vapor_pressure(temp_c: float, boil_c: float = 100.0, pressure_pa: float = 101325.0) -> float:
+    """Antoine correlation for water from 1 °C to the boiling point, capped at ambient pressure."""
+    t = bounded(temp_c, 1.0, boil_c)
+    return min(pressure_pa, 133.322368 * 10 ** (8.07131 - 1730.63 / (233.426 + t)))
 
 
 def _vapour_density(temp_c: float) -> float:
     """Saturated water-vapour density [kg m-3] (ideal gas, Antoine pressure)."""
-    return 0.018015 * _vapor_pressure(temp_c) / (R_GAS * (temp_c + 273.15))
+    return 0.018015 * _vapor_pressure(temp_c, 150.0, 1e9) / (R_GAS * (temp_c + 273.15))
 
 
-def evaporation_condensation_k(temp_c: float, water_frac: float) -> float:
+def pressure_at_altitude(altitude_m: float) -> float:
+    """International Standard Atmosphere pressure [Pa] (troposphere)."""
+    return 101325.0 * (1.0 - 2.25577e-5 * altitude_m) ** 5.25588
+
+
+def boiling_point_c(pressure_pa: float) -> float:
+    """Water boiling point [°C] from the inverted Antoine equation."""
+    return 1730.63 / (8.07131 - math.log10(pressure_pa / 133.322368)) - 233.426
+
+
+# Bread-crust desorption isotherm (GAB) at 25 °C: Hamdami, Monteau & Le Bail
+# (2006) Int. J. Food Sci. Tech. 41:33-44, Table 2. Xm in kg water / kg dry.
+GAB_XM, GAB_C, GAB_K = 0.0778, 34.09, 0.81
+
+
+def crust_water_activity(water_frac: float) -> float:
+    """Water activity of a bread matrix at a given wet-basis water fraction.
+
+    Inverts the GAB isotherm X = Xm*C*K*aw / ((1-K*aw)(1-K*aw+C*K*aw)).
+    Parameters were measured at 25 °C; at baking temperatures a given
+    moisture gives a somewhat higher aw, so this is an approximation.
+    """
+    w = bounded(water_frac, 0.0, 0.999)
+    x = w / (1.0 - w)
+    if x <= 0.0:
+        return 0.0
+    a = x * (GAB_C - 1.0)
+    b = -(x * (GAB_C - 2.0) - GAB_XM * GAB_C)
+    c = -x
+    u = (-b + math.sqrt(b*b - 4*a*c)) / (2*a)  # u = K*aw
+    return bounded(u / GAB_K, 0.0, 1.0)
+
+
+# Bread-crust browning rate: Arrhenius constants from Zanoni, Peri & Bruno
+# (1995) LWT 28:604-609, as tabulated by Purlis (2010) J. Food Eng. 99:239-249.
+BROWN_K0 = 42000.0     # s-1
+BROWN_EA = 64151.0     # J mol-1
+# Purlis & Salvadori (2009) Food Res. Int. 42:865-870: colour formation needs
+# surface temperature > ~120 °C and water activity < ~0.6.
+BROWN_MIN_C, BROWN_MAX_AW = 120.0, 0.6
+
+
+def browning_rate(temp_c: float, aw: float) -> float:
+    """First-order crust-colour rate [s-1], gated by the start conditions."""
+    if temp_c < BROWN_MIN_C - 25.0 or aw > BROWN_MAX_AW + 0.25:
+        return 0.0
+    gate = sigmoid((temp_c - BROWN_MIN_C) / 4.0) * sigmoid((BROWN_MAX_AW - aw) / 0.04)
+    return BROWN_K0 * math.exp(-BROWN_EA / (R_GAS * (temp_c + 273.15))) * gate
+
+
+def evaporation_condensation_k(temp_c: float, water_frac: float, boil_c: float = 100.0) -> float:
     """Apparent conductivity [W m-1 K-1] from the evaporation-condensation 'heat pipe'.
 
     Water evaporates on the warm side of each gas cell, diffuses across it and
@@ -139,7 +189,7 @@ def evaporation_condensation_k(temp_c: float, water_frac: float) -> float:
     """
     if water_frac <= 0.01:
         return 0.0
-    t = bounded(temp_c, 1.0, 99.5)
+    t = bounded(temp_c, 1.0, boil_c - 0.5)
     slope = (_vapour_density(t + 0.5) - _vapour_density(t - 0.5))  # per 1 K
     g = bounded((water_frac - 0.01) / 0.05, 0.0, 1.0)  # exactly off below 1 % water
     wet_gate = g * g * (3.0 - 2.0 * g)
@@ -222,15 +272,19 @@ def fermentation_rate(recipe: dict, temperature: float) -> float:
 def validate_run(recipe: dict, settings: dict) -> tuple[dict, list[str]]:
     limits = {"oven_c": (-20, 600), "minutes": (0, 1440), "thickness_mm": (2, 250),
               "initial_c": (-20, 100), "steam_pct": (0, 100), "fan": (0, 1),
-              "proof_minutes": (0, 720), "proof_c": (-10, 55), "air_access_pct": (0,100)}
+              "proof_minutes": (0, 720), "proof_c": (-10, 55), "air_access_pct": (0,100),
+              "altitude_m": (-500, 5000)}
     cfg = {}
     for key, (lo, hi) in limits.items():
         val = float(settings.get(key, {"oven_c": 220, "minutes": 35, "thickness_mm": 80,
                                        "initial_c": 22, "steam_pct": 5, "fan": 0,
-                                       "proof_minutes": 0, "proof_c": 25, "air_access_pct":100}[key]))
+                                       "proof_minutes": 0, "proof_c": 25, "air_access_pct":100,
+                                       "altitude_m": 0}[key]))
         if not math.isfinite(val) or not lo <= val <= hi:
             raise ValueError(f"{key}: expected a finite value in [{lo}, {hi}]")
         cfg[key] = val
+    cfg["pressure_pa"] = round(pressure_at_altitude(cfg["altitude_m"]), 1)
+    cfg["boil_c"] = round(boiling_point_c(cfg["pressure_pa"]), 3)
     cfg["shape"] = str(settings.get("shape", "slab"))
     cfg["pan"] = str(settings.get("pan", "none"))
     if cfg["shape"] not in SHAPES:
@@ -270,12 +324,47 @@ def validate_run(recipe: dict, settings: dict) -> tuple[dict, list[str]]:
         w.append("Baking-powder CO2 yield and temperature release are approximate; brand chemistry varies.")
     if recipe["baking_soda_g"] > 0:
         w.append("Baking soda gas requires acid or a reaction path; baking soda is NOT counted as a gas source here.")
+    if cfg["altitude_m"] > 3000:
+        w.append("High altitude: boiling point and gas expansion follow the standard atmosphere; recipe adjustments bakers make at altitude are not modelled.")
     if recipe["total_g"] > 5000:
         w.append("Very large batch; actual geometry matters more than bulk mass.")
     return cfg, w
 
 
+# Most decision-relevant first. The first warning matching a pattern earlier
+# in this list becomes the headline the app shows next to the preview.
+HEADLINE_PRIORITY = (
+    "Almost no mass remains", "Liquid water exhausted", "Extreme oven setting",
+    "Pure oil", "Gas model hit its", "Mostly liquid", "Extremely dry",
+    "At very high temperatures", "Very high oven temperature", "Coldest point ended below",
+    "High altitude", "Salt exceeds", "Yeast exceeds", "Excess baking soda",
+    "Pan/support contact is only modelled",
+)
+
+
+GENERIC_CAVEATS = ("Expansion uses uncalibrated", "Screening model", "Liquid branch:",
+                   "Pan area is inferred", "Upper-end decomposition", "Physical fracture:",
+                   "Baking-powder CO2 yield", "Pan/support:")
+
+
+def headline_warning(warnings: list[str]) -> str | None:
+    """The single most decision-relevant warning, or None if only the
+    standing model caveats apply (those are always listed in full)."""
+    for pattern in HEADLINE_PRIORITY:
+        for w in warnings:
+            if w.startswith(pattern):
+                return w
+    specific = [w for w in warnings if not w.startswith(GENERIC_CAVEATS)]
+    return specific[0] if specific else None
+
+
 def simulate(payload: dict) -> dict:
+    result = _simulate(payload)
+    result["summary"]["headline_warning"] = headline_warning(result["warnings"])
+    return result
+
+
+def _simulate(payload: dict) -> dict:
     catalog = payload["catalog"]
     amounts = payload["amounts"]
     recipe = composition_of(catalog, amounts)
@@ -332,7 +421,9 @@ def simulate(payload: dict) -> dict:
     entrained_fraction = 0.015 + 0.085*retention
     entrained_air_v = base_matrix_v * entrained_fraction / (1-entrained_fraction)
     v_reference = base_matrix_v + entrained_air_v
-    n_air = P_ATM * entrained_air_v / (R_GAS * (cfg["initial_c"]+273.15))
+    p_amb = cfg["pressure_pa"]
+    boil_c = cfg["boil_c"]
+    n_air = p_amb * entrained_air_v / (R_GAS * (cfg["initial_c"]+273.15))
     substrate_limit_g = 0.48*(frac["sugar"] * recipe["total_g"] + 0.045*recipe["flour_g"])
     co2_generated_g = 0.0
     n_co2 = 0.0
@@ -343,7 +434,7 @@ def simulate(payload: dict) -> dict:
         n_co2 = (produced_g / CO2_G_MOL) * retention * math.exp(-cfg["proof_minutes"] * (1-retention) / 1600.0)
     powder_co2_remaining_g = recipe["baking_powder_g"] * 0.12
     def desired_volume_factor(temperature: float) -> float:
-        gas_v = (n_air+n_co2) * R_GAS * (max(-20.0,temperature)+273.15) / P_ATM
+        gas_v = (n_air+n_co2) * R_GAS * (max(-20.0,temperature)+273.15) / p_amb
         return (base_matrix_v + gas_v) / v_reference
     def linear_factor(vf: float) -> float:
         return vf ** (1.0 / (1 + p_exp))
@@ -396,6 +487,7 @@ def simulate(payload: dict) -> dict:
             "temp_profile": [round(t, 2) for t in temps],
             "water_profile": [round(x*100, 2) for x in moisture],
             "browning_index": round(100 * (1.0 - math.exp(-surface_brown)), 2),
+            "crust_surface_c": round(top_face_c, 3),
             "rise_pct": round((volume_factor-1.0)*100.0, 3),
             "thickness_mm_est": round(cfg["thickness_mm"]*linear_factor(volume_factor), 3),
             "co2_generated_g": round(co2_generated_g, 4),
@@ -404,20 +496,29 @@ def simulate(payload: dict) -> dict:
         if not symmetric:
             frame["bottom_c"] = round(temps[0], 3)
             frame["bottom_browning_index"] = round(100 * (1.0 - math.exp(-bottom_brown)), 2)
+            frame["bottom_face_c"] = round(bottom_face_c, 3)
             if pan_c is not None:
                 frame["pan_c"] = round(pan_c, 3)
         timeline.append(frame)
 
     def surface_evaporation(i: int, area: float, h_area: float, neighbour_g: float, scale: float) -> float:
         """Water [kg per measure] leaving cell i through an exposed face this step."""
-        p_sat = _vapor_pressure(temps[i])
-        liquid_availability = bounded(wet[i] / max(dry[i] + wet[i], 1e-12) / 0.22, 0.0, 1.0)
-        vapor_flux = 1.5e-8 * max(0.0, water_activity_proxy*p_sat - p_air) * liquid_availability * scale
+        p_sat = _vapor_pressure(temps[i], boil_c, p_amb)
+        aw = water_activity_proxy * crust_water_activity(wet[i] / max(dry[i] + wet[i], 1e-12))
+        vapor_flux = 1.5e-8 * max(0.0, aw*p_sat - p_air) * scale
         nb = i + 1 if i == 0 else i - 1
         available_rate = max(0.0, h_area*(cfg["oven_c"]-temps[i]) + neighbour_g*(temps[nb]-temps[i]))
         return min(wet[i], vapor_flux * area * dt,
                    (available_rate*dt + 0.01*max(0.0,temps[i]-20)*cps[i]) / LV)
 
+    # Reactant availability relative to a lean flour-water-salt bread, the kind
+    # of dough the browning constants were measured on. Not calibrated.
+    def substrate_factor(sugar, protein):
+        return bounded((sugar+0.006)/0.03, 0.1, 4.0) * bounded((protein+0.015)/0.12, 0.2, 2.0)
+    substrate_rel = substrate_factor(frac["sugar"], frac["protein"]) / substrate_factor(0.0075, 0.08)
+    soda_effect = 1 + 0.8 * bounded(recipe["baking_soda_g"]/max(recipe["total_g"],1e-8) / 0.012, 0, 2)
+
+    top_face_c = bottom_face_c = cfg["initial_c"]
     record(0.0)
     for step in range(steps):
         s_lin = linear_factor(volume_factor)
@@ -431,7 +532,7 @@ def simulate(payload: dict) -> dict:
             cp, k = props(water_frac, temps[i])
             # gas pores and crumb structure lower effective conduction; provisional
             cps.append((dry[i] + wet[i]) * cp)  # J/(measure K)
-            kecs.append(evaporation_condensation_k(temps[i], water_frac))
+            kecs.append(evaporation_condensation_k(temps[i], water_frac, boil_c))
             ks.append(k * porosity_factor + kecs[-1])
 
         # Linearized radiative+convective boundaries; implicit Euler heat flow.
@@ -506,6 +607,17 @@ def simulate(payload: dict) -> dict:
         if off:
             pan_c = solved[0]
         temps = solved[off:]
+        # Temperature of the actual outer skin (the face), not the outer cell's
+        # average: what browns is the surface itself. From the flux balance
+        # h*(T_oven - T_face) = G_half*(T_face - T_cell).
+        g_top = ks[-1] * area_now[n] / (0.5 * dx_current)
+        top_face_c = (h_top*cfg["oven_c"] + g_top*temps[-1]) / (h_top + g_top)
+        if not symmetric:
+            g_bot = ks[0] * area_now[0] / (0.5 * dx_current)
+            if pan_c is not None:
+                bottom_face_c = (pan_contact*pan_c + g_bot*temps[0]) / (pan_contact + g_bot)
+            else:
+                bottom_face_c = (h_bottom*cfg["oven_c"] + g_bot*temps[0]) / (h_bottom + g_bot)
         # The heat-pipe share of each face's heat flow is carried by water that
         # evaporated on the warm side and condensed on the cool side, so move
         # that water (q_ec * dt / L_v) as well. Energy is already accounted for
@@ -528,8 +640,8 @@ def simulate(payload: dict) -> dict:
         # sensible heat above BOIL_C in a cell that still has water is spent
         # boiling that water off; the vapour is assumed to vent.
         for i in range(n):
-            if wet[i] > 0.0 and temps[i] > BOIL_C:
-                boiled = min(wet[i], (temps[i]-BOIL_C) * cps[i] / LV)
+            if wet[i] > 0.0 and temps[i] > boil_c:
+                boiled = min(wet[i], (temps[i]-boil_c) * cps[i] / LV)
                 wet[i] -= boiled
                 evaporated += boiled
                 temps[i] -= boiled * LV / cps[i]
@@ -585,16 +697,14 @@ def simulate(payload: dict) -> dict:
                 p_rate = 0.0018 * sigmoid((temps[i]-74)/8)
                 protein[i] += (1.0-protein[i]) * (1.0 - math.exp(-p_rate*dt))
         # browning *indices*, not colorimetrically calibrated
-        substrate = bounded((frac["sugar"]+0.006)/0.03, 0.1, 4.0) * bounded((frac["protein"]+0.015)/0.12, 0.2, 2.0)
-        soda_effect = 1 + 0.8 * bounded(recipe["baking_soda_g"]/max(recipe["total_g"],1e-8) / 0.012, 0, 2)
         if recipe["flour_g"] > 0 or frac["protein"] > 0.03:
-            def brown_rate(i):
-                local_w = wet[i] / max(wet[i]+dry[i], 1e-12)
-                dry_gate = sigmoid((0.23-local_w) / 0.055)
-                return 0.00019 * math.exp(bounded((temps[i]-145)/28, -7, 6)) * dry_gate * substrate * soda_effect
-            surface_brown += brown_rate(n-1) * dt
+            def brown_rate(i, face_c):
+                w_i = wet[i] / max(wet[i]+dry[i], 1e-12)
+                aw_i = water_activity_proxy * crust_water_activity(w_i)
+                return browning_rate(face_c, aw_i) * substrate_rel * soda_effect
+            surface_brown += brown_rate(n-1, top_face_c) * dt
             if not symmetric:
-                bottom_brown += brown_rate(0) * dt
+                bottom_brown += brown_rate(0, bottom_face_c) * dt
         if (step+1) % stride == 0 or step == steps-1:
             record((step+1)*dt)
     moisture_profile = [100*wet[i]/(wet[i]+dry[i]) if wet[i]+dry[i] else 0 for i in range(n)]
@@ -606,8 +716,8 @@ def simulate(payload: dict) -> dict:
         warnings.append("Starch and protein transition indices are disabled without flour; use the temperature and moisture traces only.")
     if sum(wet)+dry_total < 0.01*original_total:
         warnings.append("Almost no mass remains: the calculated temperature belongs to an empty computational grid and is not a material prediction.")
-    if recipe["flour_g"] > 0 and cfg["minutes"] > 0 and min(temps) < 90.0:
-        warnings.append("Coldest point ended below 90 °C. Internal steam heat transport is one effective term fitted to a single published loaf (about ±2–3 min on an unseen bake); treat centre timing as approximate, not as doneness.")
+    if recipe["flour_g"] > 0 and cfg["minutes"] > 0 and min(temps) < boil_c - 10.0:
+        warnings.append(f"Coldest point ended below {boil_c - 10.0:.0f} °C. Internal steam heat transport is one effective term fitted to a single published loaf (about ±2–3 min on an unseen bake); treat centre timing as approximate, not as doneness.")
     if pan["kind"] in ("open", "solid"):
         warnings.append("Pan/support: material properties are handbook values, but dough-pan contact and rack/paper shielding are assumptions; side walls of a tin are not modelled.")
     if cfg["oven_c"] > 280:
@@ -652,7 +762,17 @@ def simulate(payload: dict) -> dict:
                "co2_generated_g": round(co2_generated_g,4),
                "co2_retained_g": round(n_co2*CO2_G_MOL,4),
                "gas_retention_factor": round(retention,4),
-               "shape": shape, "pan": cfg["pan"]}
+               "shape": shape, "pan": cfg["pan"],
+               "crust_surface_c": round(top_face_c, 2),
+               "boil_c": round(boil_c, 2), "pressure_kpa": round(p_amb / 1000.0, 2),
+               "surface_aw": round(water_activity_proxy * crust_water_activity(wet[-1] / max(wet[-1]+dry[-1], 1e-12)), 3)}
+    # Whole-loaf colour change from Purlis & Salvadori (2007) J. Food Eng.
+    # 80:1107-1115: dE = (0.0266*T_oven + 3.4991) * weight-loss %, fitted on
+    # bread at 180-220 °C for weight losses above 7 %. Reported only there.
+    if recipe["flour_g"] > 0 and 180.0 <= cfg["oven_c"] <= 220.0 and mass_loss > 7.0:
+        summary["colour_change_dE_purlis2007"] = round((0.0266*cfg["oven_c"] + 3.4991) * mass_loss, 1)
+    else:
+        summary["colour_change_dE_purlis2007"] = None
     if not symmetric:
         summary["bottom_c"] = round(temps[0], 2)
         summary["bottom_browning_index"] = round(100*(1-math.exp(-bottom_brown)), 2)

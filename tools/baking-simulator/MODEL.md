@@ -1,4 +1,4 @@
-# BakeLab 0.11.0 — Model specification and evidence
+# BakeLab 0.12.0 — Model specification and evidence
 
 *Sections below are labelled by the version that introduced them; the core heat/moisture description originated in v0.2.*
 
@@ -62,6 +62,24 @@ Pan density, heat capacity, conductivity and emissivity are handbook values for 
 
 When both faces are made identical, the full-thickness solver reproduces the symmetric solver; this is checked in `tests/test_geometry.py`. A slab with a non-symmetric bottom also reports `bottom_c`, `pan_c`, `bottom_browning_index` and `coldest_c`.
 
+### Altitude, water activity and browning (v0.12.0)
+
+**Altitude.** The oven's air pressure follows the International Standard Atmosphere, `p = 101325·(1 − 2.25577×10⁻⁵·h)^5.25588` Pa. Water's boiling point comes from the inverted Antoine equation: 100.0 °C at sea level, 95.0 °C at 1,500 m and 90.0 °C at 3,000 m. That boiling point is the ceiling for wet crumb and for the open-pan liquids. The vapour-pressure cap and the gas-expansion law also use the local pressure, so the same CO₂ makes more volume higher up. Recipe changes that bakers make at altitude are not modelled.
+
+**Water activity.** Surface evaporation is driven by `a_w·p_sat(T) − p_vapour,oven`. Here `a_w` is the dissolved-sugar/salt proxy multiplied by the water activity of the bread matrix. The matrix value comes from inverting the bread-crust desorption isotherm (GAB model) of Hamdami, Monteau & Le Bail (2006), *Int. J. Food Sci. Tech.* 41:33–44, Table 2: `X_m = 0.0778 kg/kg dry`, `C = 34.09`, `K = 0.81`. This replaces an ad hoc "liquid availability" factor and gives a falling drying rate as the crust dries. The parameters were measured at 25 °C; at baking temperatures a given moisture content has a somewhat higher `a_w`.
+
+**Browning.** The browning index is now the progress of a first-order colour reaction, `100·(1 − exp(−∫k dt))`, where:
+
+- `k = k₀·exp(−E_a/RT)`, with `k₀ = 42,000 s⁻¹` and `E_a = 64,151 J/mol`. These are the bread-crust browning constants of Zanoni, Peri & Bruno (1995), *LWT* 28:604–609, as tabulated in Purlis (2010), *J. Food Eng.* 99:239–249. The original paper's exact functional form is not reproduced; only its Arrhenius rate is used.
+- `k` is switched on smoothly only above about 120 °C and below `a_w` ≈ 0.6. Purlis & Salvadori (2009), *Food Res. Int.* 42:865–870, give these as the minimum conditions for bread colour formation.
+- `T` is the crust **skin** temperature, taken from the flux balance at the outer face, not the outer cell's average. The skin is what browns, and the cell average lags it badly on a ~1.5 mm grid.
+- A substrate factor (sugar and protein relative to a lean bread) and a baking-soda factor remain uncalibrated multipliers.
+- A slab with a separate bottom has its own bottom index, driven by the bottom face temperature.
+
+**Whole-loaf colour change.** Inside the range it was fitted on (oven 180–220 °C, weight loss above 7 %), the summary also reports `ΔE = (0.0266·T_oven + 3.4991)·weight-loss %` from Purlis & Salvadori (2007), *J. Food Eng.* 80:1107–1115. Outside that range it is left blank.
+
+**Headline warning.** `summary.headline_warning` picks the single most decision-relevant warning from a priority list, such as an empty grid, an extreme oven, a cold centre or high altitude. The standing caveats are always listed in full but never become the headline.
+
 ## Moisture model
 
 Interior water redistribution uses an effective diffusion term (order of magnitude `10⁻⁹–10⁻⁸ m²/s`, provisional), with conservative equal-and-opposite fluxes across adjacent cells. Surface moisture loss uses a provisional vapour-pressure driving force:
@@ -80,7 +98,7 @@ Three indices are presented as **relative laboratory hypotheses**, not predictio
 
 - Starch gelatinization proxy: water-gated sigmoidal temperature activation with first-order completion, only if flour is present.
 - Protein thermal-setting proxy: sigmoidal temperature activation with first-order completion.
-- Surface browning index: temperature-sensitive kinetic surrogate, modulated by local dryness, protein and sugar concentrations and a rough soda alkalinity effect.
+- Surface browning index: since v0.12.0, a first-order reaction with literature Arrhenius constants, driven by the crust skin temperature and gated by temperature and water activity (see below).
 
 The model now includes **illustrative yeast CO₂ and baking-powder CO₂ source terms**, an empirical bubble-retention factor and an effective-volume index that changes the thermal slab thickness. It does **not** simulate validated yeast metabolism, fluid elasticity, actual bubble pressure, bubble collapse, free-loaf deformation, crumb morphology, fat polymorphism or enzymatic hydrolysis. Baking soda affects the provisional browning index but its reaction with acid and CO₂ production are not modeled. These new submodels are exploratory: changing the yeast slider changes a calculated gas estimate, **not yet a validated rise prediction**.
 

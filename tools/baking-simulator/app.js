@@ -11,7 +11,7 @@ const ingredientVisuals={
   cornstarch:'#ece9dd',vital_gluten:'#d9c7a0',cocoa:'#5c3b2a'
 };
 const categories=['Grains','Liquids','Fats','Sweeteners','Leavening & salts','Starches & proteins'];
-const defaults={oven_c:220,minutes:35,thickness_mm:80,initial_c:22,steam_pct:5,fan:0,proof_minutes:60,proof_c:26,air_access_pct:100,shape:'slab',pan:'none'};
+const defaults={oven_c:220,minutes:35,thickness_mm:80,initial_c:22,steam_pct:5,fan:0,proof_minutes:60,proof_c:26,air_access_pct:100,shape:'slab',pan:'none',altitude_m:0};
 // Mirrors geometry.py (SHAPES and PANS); tests check the ids stay in sync.
 const shapeOptions=[['slab','Flat slab (thickness)'],['cylinder','Long cylinder, e.g. baguette (diameter)'],['sphere','Ball, e.g. roll or boule (diameter)']];
 const panOptions=[['none','None, both faces open (legacy)'],['rack','Wire rack + baking paper'],['aluminium_sheet','Aluminium sheet, light (1.5 mm)'],['dark_steel_pan','Dark steel pan (1 mm)'],['glass_dish','Glass dish (5 mm)'],['cast_iron','Cast iron / Dutch oven base, preheated (5 mm)'],['baking_stone','Baking stone, preheated (15 mm)'],['baking_steel','Baking steel, preheated (6 mm)']];
@@ -34,6 +34,11 @@ const presets={
   oilwater:{water:500,olive_oil:500},
   syrup:{sugar:1000,water:220},
   pureoil:{olive_oil:1000},
+  baguette:{bread_flour:500,water:350,salt:10,instant_yeast:5},
+  roll:{ap_flour:300,milk:170,egg:50,butter:30,sugar:20,salt:5,instant_yeast:6},
+  flatbread:{bread_flour:300,water:195,salt:8,instant_yeast:2},
+  focaccia:{bread_flour:500,water:400,olive_oil:40,salt:10,instant_yeast:7},
+  pagnotta:{bread_flour:500,water:290,salt:10,instant_yeast:10},
   bananadry:{water:500,banana:250},
   oatporridge:{water:600,oats:200}
 };
@@ -46,13 +51,14 @@ const settingDefs=[
   ['initial_c','Initial dough temperature','°C',-20,100,1],
   ['steam_pct','Oven water vapour level','%*',0,100,1],
   ['fan','Forced-air oven','0 / 1',0,1,1],
-  ['air_access_pct','Air access (relative)','%',0,100,1]
+  ['air_access_pct','Air access (relative)','%',0,100,1],
+  ['altitude_m','Altitude above sea level','m',-500,5000,50]
 ];
 let catalog=[],amounts={},settings={...defaults},engineReady=false,last=null,requestId=0,renderedId=0,timer=null;
 let snapshots={A:null,B:null};
 let playing=false,playHandle=0,playStart=0,playOrigin=0,playValue=100;
 const BAKE_PLAY_DURATION=16000; // milliseconds for 0..100 at 1x
-const worker = new Worker('./worker.js?ui=0.11.0',{type:'module'});
+const worker = new Worker('./worker.js?ui=0.12.0',{type:'module'});
 worker.onmessage = ({data}) => {
   if(data.type==='ready') {
     engineReady=true;$('engine-dot').classList.add('ready');$('engine-status').textContent='Python model ready';$('run').disabled=false;
@@ -71,6 +77,15 @@ worker.onerror=err=>{showError(String(err.message||'Browser worker failed'));$('
 function showError(message){$('error').textContent=message;$('error').hidden=false;}
 function currentInputs(){return {amounts:{...amounts},settings:{...settings}};}
 function createElement(tag,attrs={},children=[]){const e=document.createElement(tag);for(const [k,v] of Object.entries(attrs)){if(k==='text')e.textContent=v;else if(k==='class')e.className=v;else e.setAttribute(k,String(v));}for(const child of children)e.append(child);return e;}
+// Shape/pan presets also set the bake. Values are typical home-baking
+// conditions, chosen for illustration; pagnotta mirrors a published test bake.
+const presetProcess={
+  baguette:{shape:'cylinder',pan:'none',thickness_mm:60,oven_c:240,minutes:25,proof_minutes:60,proof_c:26,steam_pct:30,fan:0,initial_c:24},
+  roll:{shape:'sphere',pan:'none',thickness_mm:65,oven_c:190,minutes:18,proof_minutes:45,proof_c:28,steam_pct:5,fan:0,initial_c:24},
+  flatbread:{shape:'slab',pan:'baking_steel',thickness_mm:8,oven_c:280,minutes:8,proof_minutes:0,steam_pct:5,fan:0,initial_c:20},
+  focaccia:{shape:'slab',pan:'dark_steel_pan',thickness_mm:25,oven_c:220,minutes:25,proof_minutes:45,proof_c:26,steam_pct:5,fan:0,initial_c:24},
+  pagnotta:{shape:'slab',pan:'rack',thickness_mm:50,oven_c:200,minutes:40,proof_minutes:0,steam_pct:5,fan:1,initial_c:25},
+};
 function loadPreset(id){
  const initial=presets[id]||presets.bread;
  for(const item of catalog){amounts[item.id]=Number(initial[item.id]||0);}
@@ -80,10 +95,22 @@ function loadPreset(id){
    settings={...settings,oven_c:260,minutes:240,thickness_mm:15,initial_c:22};
    $('process-controls').replaceChildren();renderSettings();
  }
+ if(presetProcess[id]){settings={...settings,...presetProcess[id]};$('process-controls').replaceChildren();renderSettings();}
  updateControls();queueRun();
 }
 function updateControls(){for(const item of catalog){const row=document.querySelector(`[data-ingredient="${item.id}"]`);if(!row)continue;row.querySelector('input[type=number]').value=amounts[item.id];row.querySelector('input[type=range]').value=Math.min(amounts[item.id],Number(item.max));}updateMass();}
-function updateMass(){const t=Object.values(amounts).reduce((a,b)=>a+Number(b||0),0);$('total-mass').textContent=fmt(t,1)+' g';}
+const flourIds=['bread_flour','ap_flour','whole_wheat','rye_flour','vital_gluten'];
+function updateMass(){
+  const t=Object.values(amounts).reduce((a,b)=>a+Number(b||0),0);$('total-mass').textContent=fmt(t,1)+' g';
+  // Baker's percentages: everything relative to total flour. Hydration counts
+  // the water carried by every non-flour ingredient (milk, egg, butter ...).
+  const box=$('bakers-pct');if(!box)return;
+  const flour=flourIds.reduce((a,id)=>a+Number(amounts[id]||0),0);
+  if(flour<1){box.textContent='No flour in the formula, so baker\'s percentages do not apply.';return;}
+  const water=catalog.filter(i=>!flourIds.includes(i.id)).reduce((a,i)=>a+Number(amounts[i.id]||0)*Number(i.water||0),0);
+  const pct=id=>100*Number(amounts[id]||0)/flour;
+  box.textContent=`Baker's %: hydration ${fmt(100*water/flour,0)}% · salt ${fmt(pct('salt'),1)}% · yeast ${fmt(pct('instant_yeast'),1)}% · sugar ${fmt(pct('sugar'),1)}% · fat ${fmt(pct('butter')+pct('olive_oil'),1)}% (of ${fmt(flour,0)} g flour)`;
+}
 function renderIngredients(){
   const wrapper=$('ingredients');wrapper.replaceChildren();
   for (const category of categories){
@@ -148,7 +175,7 @@ function renderSettings(){
     slider.addEventListener('input',()=>{
       const selected=Number(slider.value);
       settings[key]=temperature&&temperatureUnit==='F'?fToC(selected):selected;
-      present();queueRun();
+      present();if(key==='altitude_m'&&$('altitude-note'))$('altitude-note').textContent=altitudeNote();queueRun();
     });
     row.append(head,slider);
     if(key==='thickness_mm')row.append(createElement('div',{class:'subtle',text:'For liquids, the starting depth in an open pan; for dough, the initial slab thickness before proof.'}));
@@ -156,10 +183,14 @@ function renderSettings(){
     if(key==='oven_c')row.append(createElement('div',{class:'subtle',text:'Extended to 600°C / 1112°F. Beyond ordinary ovens, these are numerical stress tests only.'}));
     if(key==='steam_pct')row.append(createElement('div',{class:'subtle',text:'* Vapour pressure / water saturation at 100°C; not oven RH.'}));
     if(key==='proof_minutes')row.append(createElement('div',{class:'subtle',text:'Pre-bake fermentation. Empirical CO₂ rates only; no measured calibration.'}));
+    if(key==='altitude_m')row.append(createElement('div',{class:'subtle',id:'altitude-note',text:altitudeNote()}));
     if(key==='air_access_pct')row.append(createElement('div',{class:'subtle',text:'High-heat screening only. 100% means freely accessible air, not pure oxygen; 0% means no char oxidation in the proxy. Does not predict fire.'}));
     wrapper.append(row);
  }
 }
+// Standard-atmosphere boiling point, same formulas as engine.py.
+function boilingPointAt(altitude){const p=101325*Math.pow(1-2.25577e-5*altitude,5.25588);return 1730.63/(8.07131-Math.log10(p/133.322368))-233.426;}
+function altitudeNote(){const b=boilingPointAt(settings.altitude_m||0);return `Water boils at about ${fmt(b,1)} °C / ${fmt(cToF(b),1)} °F here; lower air pressure also lets gas expand more.`;}
 function queueRun(delay=360){
   if(!engineReady)return;
   setPlaying(false);
@@ -167,12 +198,47 @@ function queueRun(delay=360){
   $('save-a').disabled=true;$('save-b').disabled=true;$('scene-play').disabled=true;
   timer=setTimeout(()=>{$('run-indicator').textContent='SOLVING';$('run').disabled=true;worker.postMessage({id:thisId,payload:{catalog,...currentInputs()}});},delay);
 }
+// Milestones are read from the timeline the engine returned; nothing new is calculated.
+function firstMinute(timeline,key,threshold){const f=timeline.find(x=>(x[key]??-Infinity)>=threshold);return f?f.minute:null;}
+function crustColour(index){
+  // Illustrative only: blend from raw dough to a deep crust as the index rises.
+  const p=Math.max(0,Math.min(1,(index||0)/100));
+  const stops=[[233,214,176],[214,160,92],[160,92,42],[88,48,24]];
+  const x=p*(stops.length-1),i=Math.min(stops.length-2,Math.floor(x)),t=x-i;
+  return 'rgb('+stops[i].map((v,k)=>Math.round(v+(stops[i+1][k]-v)*t)).join(',')+')';
+}
+function renderMilestones(){
+  const box=$('milestones');if(!box||!last)return;
+  const r=last.result,tl=r.timeline,s=r.summary,items=[];
+  const add=(label,value,pending=false)=>{const li=createElement('li',{class:pending?'pending':''});li.append(createElement('span',{text:label}),createElement('strong',{text:value}));items.push(li);};
+  const fmtMin=m=>m==null?'not reached':`${fmt(m,1)} min`;
+  if(s.liquid_mode){
+    add('Remaining depth at end',`${fmt(s.liquid_depth_mm,1)} mm`);
+    add('Water left at end',`${fmt(s.water_remaining_g,1)} g`);
+  }else{
+    const boil=s.boil_c??100,target=boil-4;
+    const key=tl[0]?.coldest_c!=null?'coldest_c':'center_c';
+    const tTarget=firstMinute(tl,key,target);
+    add(`Coldest point reaches ${fmt(target,0)} °C`,fmtMin(tTarget),tTarget==null);
+    const tBrown=firstMinute(tl,'browning_index',5);
+    add('Top crust starts to brown (index 5%)',fmtMin(tBrown),tBrown==null);
+    add('Top browning at end',`${fmt(s.browning_index,0)}%`);
+    if(s.bottom_browning_index!=null)add('Bottom browning at end',`${fmt(s.bottom_browning_index,0)}%`);
+    if(s.crust_surface_c!=null)add('Crust skin at end',bothTemps(s.crust_surface_c));
+    add('Water lost',`${fmt(s.mass_loss_pct,1)}%`);
+    add('Colour change ΔE*',s.colour_change_dE_purlis2007==null?'n/a outside 180–220 °C':fmt(s.colour_change_dE_purlis2007,0),s.colour_change_dE_purlis2007==null);
+  }
+  if(s.boil_c!=null&&Math.abs(s.boil_c-100)>0.2)add('Boiling point at this altitude',bothTemps(s.boil_c));
+  box.replaceChildren(...items);
+  $('crust-swatch').style.background=s.liquid_mode?'#7ebbe4':crustColour(s.browning_index);
+}
 function renderResult(){
   if(!last)return;
   const r=last.result,s=r.summary;
   const boxes=$('metrics').children;
   const vals=[[bothTemps(s.center_c),'Centre temperature'],[bothTemps(s.surface_c),'Surface temperature'],[fmt(s.estimated_total_mass_loss_pct ?? s.mass_loss_pct,2)+' %','Estimated total (water + organics)'],[fmt(s.browning_index,2),'Relative index · uncalibrated'],[fmt(s.rise_pct,2)+' %','Volume proxy · uncalibrated'],[fmt(s.co2_generated_g,3)+' g','CO₂ potential estimate']];
   vals.forEach((pair,i)=>{boxes[i].querySelector('strong').textContent=pair[0];boxes[i].querySelector('small').textContent=pair[1];});
+  renderMilestones();
   const segments=['water','starch','protein','fat','sugar','fiber','ash'];
   const comp=r.summary, proportions={water:comp.water_pct,starch:comp.starch_pct,protein:comp.protein_pct,fat:comp.fat_pct,sugar:comp.sugar_pct,fiber:comp.fiber_pct,ash:comp.ash_pct};
   let allocated=0;
@@ -353,9 +419,11 @@ function drawBakeScene(frame){
   $('scene-oven').textContent=bothTemps(last.result.settings.oven_c);
   $('scene-thickness').textContent=fmt(frame.thickness_mm_est,1)+' mm';
   $('scene-rise').textContent=fmt(frame.rise_pct,1)+'%';
-  const boundary=$('scene-warning-details'), problems=last.result.warnings||[];
-  boundary.hidden=!problems.length;
-  $('scene-warning-text').textContent=problems[0]||'';
+  // Only a run-specific problem is surfaced next to the preview; the general
+  // model caveats stay listed under Results → Model boundaries.
+  const boundary=$('scene-warning-details'), headline=last.result.summary.headline_warning;
+  boundary.hidden=!headline;
+  $('scene-warning-text').textContent=headline||'';
 
   const w=760,h=300, panL=154, panR=568, panTop=170, panDepth=48, panHeight=78;
   // Deliberately non-physical shading for the 2.5D projection. The underlying
@@ -391,6 +459,15 @@ function drawBakeScene(frame){
   const fractionAsh=clamp(d.ashG/Math.max(remainingScreen,0.001),0,1);
   const renderTop=d.ashy ? '#999994' : d.charred ? '#24201d' : toneColor(crust,'#251e1a',clamp(fractionChar*1.25,0,1));
   const renderCrumb=d.ashy ? '#777c77' : d.charred ? '#2c2520' : toneColor(crumb,'#342922',clamp(fractionChar*.85,0,1));
+  // Free-standing breads (round shapes, or a slab on a flat support) are drawn
+  // without the deep pan. Still a stylised picture of the computed size and
+  // browning, not a predicted loaf shape.
+  const shape=last.result.settings.shape||'slab', support=last.result.settings.pan||'none';
+  const flatSupport=['rack','aluminium_sheet','baking_stone','baking_steel','cast_iron'].includes(support);
+  if(!d.liquidMode && !d.liquidish && !d.oily && !d.sugary && (shape!=='slab' || flatSupport)){
+    drawFreeFormBake(svg,{shape,support,frame,d,top:renderTop,crumb:renderCrumb,rackY});
+    return;
+  }
   const panTopFace=`${panL},${panTop} ${panR},${panTop} ${panR+panDepth},${panTop-panDepth} ${panL+panDepth},${panTop-panDepth}`;
   const panFront=`${panL},${panTop} ${panR},${panTop} ${panR},${panTop+panHeight} ${panL},${panTop+panHeight}`;
   const panSide=`${panR},${panTop} ${panR+panDepth},${panTop-panDepth} ${panR+panDepth},${panTop+panHeight-panDepth} ${panR},${panTop+panHeight}`;
@@ -535,11 +612,47 @@ function drawBakeScene(frame){
   }
   // The artwork remains unobstructed; metrics and warnings render in HTML below it.
 }
+function drawFreeFormBake(svg,{shape,support,frame,d,top,crumb,rackY}){
+  const cx=380, size=frame.thickness_mm_est||last.result.settings.thickness_mm;
+  // Support surface
+  let baseY=rackY-2;
+  const plate={aluminium_sheet:['#cfd6d8',4],baking_steel:['#2c3236',7],baking_stone:['#b9a27f',14],cast_iron:['#1f2224',9],rack:['#efe6d2',2]}[support];
+  if(plate){
+    const [fill,th]=plate; baseY=rackY-th;
+    svg.append(svgEl('rect',{x:150,y:baseY,width:460,height:th,rx:Math.min(4,th/2),fill,class:'scene-outline',opacity:support==='rack'?0.85:1}));
+    if(support==='cast_iron')svg.append(svgEl('rect',{x:146,y:baseY-10,width:8,height:th+10,rx:3,fill}),svgEl('rect',{x:606,y:baseY-10,width:8,height:th+10,rx:3,fill}));
+  }
+  const bottomTone=frame.bottom_browning_index!=null?toneColor(crumb,'#5a3018',clamp(frame.bottom_browning_index/100,0,1)*0.9):top;
+  let topEdge=baseY-40;
+  if(shape==='sphere'){
+    // A proofed ball settles into a bun: wider than tall.
+    const r=clamp(size*0.85,26,90), hgt=r*1.15, half=r*1.08;
+    topEdge=baseY-hgt;
+    svg.append(svgEl('ellipse',{cx,cy:baseY-2,rx:half,ry:5,fill:'rgba(0,0,0,.35)'}));
+    svg.append(svgEl('path',{d:`M ${cx-half} ${baseY-2} C ${cx-half*1.02} ${baseY-hgt*0.75} ${cx-half*0.55} ${topEdge} ${cx} ${topEdge} C ${cx+half*0.55} ${topEdge} ${cx+half*1.02} ${baseY-hgt*0.75} ${cx+half} ${baseY-2} Z`,fill:top,class:'scene-outline'}));
+    svg.append(svgEl('path',{d:`M ${cx-half*0.3} ${topEdge+hgt*0.18} L ${cx+half*0.3} ${topEdge+hgt*0.42} M ${cx+half*0.3} ${topEdge+hgt*0.18} L ${cx-half*0.3} ${topEdge+hgt*0.42}`,stroke:crumb,'stroke-width':4,'stroke-linecap':'round',opacity:.75}));
+  }else if(shape==='cylinder'){
+    const hgt=clamp(size*0.8,24,80), len=430, x0=cx-len/2, top0=baseY-hgt; topEdge=top0;
+    svg.append(svgEl('ellipse',{cx,cy:baseY-2,rx:len/2,ry:5,fill:'rgba(0,0,0,.35)'}));
+    svg.append(svgEl('rect',{x:x0,y:top0,width:len,height:hgt,rx:hgt/2,fill:top,class:'scene-outline'}));
+    for(let i=0;i<5;i++){const sx=x0+70+i*72;svg.append(svgEl('path',{d:`M ${sx} ${top0+hgt*0.32} Q ${sx+22} ${top0+hgt*0.12} ${sx+46} ${top0+hgt*0.22}`,stroke:crumb,'stroke-width':4,fill:'none','stroke-linecap':'round',opacity:.8}));}
+  }else{
+    const hgt=clamp(size*1.1,8,90), wid=support==='rack'?330:400, x0=cx-wid/2, crown=clamp(hgt*0.35,3,30); topEdge=baseY-hgt-crown;
+    svg.append(svgEl('path',{d:`M ${x0} ${baseY} C ${x0+10} ${baseY-hgt} ${x0+wid*0.25} ${baseY-hgt-crown} ${cx} ${baseY-hgt-crown} C ${x0+wid*0.75} ${baseY-hgt-crown} ${x0+wid-10} ${baseY-hgt} ${x0+wid} ${baseY} Z`,fill:top,class:'scene-outline'}));
+  }
+  // Underside colour where the bottom can brown (rack, stone, steel, sheet).
+  if(frame.bottom_browning_index!=null&&shape==='slab')svg.append(svgEl('rect',{x:shape==='slab'?(support==='rack'?cx-165:cx-200):cx-150,y:baseY-3,width:support==='rack'?330:400,height:3,fill:bottomTone,opacity:.9}));
+  if(d.massLoss>0.5){
+    for(let i=0;i<3;i++){const sx=cx-60+i*60, sy=Math.max(70,topEdge-58-(i%2)*12);svg.append(svgEl('path',{d:`M ${sx} ${sy+40} C ${sx-12} ${sy+24} ${sx+12} ${sy+14} ${sx} ${sy}`,stroke:'rgba(220,235,232,.45)','stroke-width':3,fill:'none','stroke-linecap':'round'}));}
+  }
+}
 function drawChart(){
  const svg=$('chart');svg.replaceChildren();if(!last)return;
  const t=last.result.timeline;const maxT=Math.max(1,t.at(-1).minute);const metric=$('metric').value;
  let lines;
- if(metric==='temp')lines=[['center_c','Center (°'+temperatureUnit+')',colors.center],['mid_c','Mid-depth (°'+temperatureUnit+')',colors.mid],['surface_c','Surface (°'+temperatureUnit+')',colors.surface]];
+ if(metric==='temp'){lines=[['center_c','Center (°'+temperatureUnit+')',colors.center],['mid_c','Mid-depth (°'+temperatureUnit+')',colors.mid],['surface_c','Outer layer (°'+temperatureUnit+')',colors.surface]];
+   if(last.result.timeline[0]?.crust_surface_c!=null)lines.push(['crust_surface_c','Crust skin (°'+temperatureUnit+')','#e07a4f']);
+   if(last.result.timeline[0]?.bottom_c!=null)lines.push(['bottom_c','Bottom (°'+temperatureUnit+')','#c8b3ea']);}
  else if(metric==='moisture')lines=[['center_moisture_pct','Center',colors.center],['surface_moisture_pct','Surface',colors.blue||colors.mid]];
  else if(metric==='mass')lines=[['mass_loss_pct','Water loss · %',colors.mid],['estimated_total_mass_loss_pct','Estimated total · %',colors.surface]];
  else if(metric==='survival')lines=[['estimated_intact_organic_g','Intact organics · g',colors.center],['estimated_char_g','Char · g',colors.surface],['estimated_ash_g','Minerals · g',colors.mid]];

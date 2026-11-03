@@ -25,16 +25,16 @@ Values come from the papers' text only. No curves were digitised.
   - **15.0 g of water was lost.**
 - The authors attribute more than 60 % of the dough's effective thermal conductivity to evaporation–diffusion–condensation in closed pores.
 
-## How BakeLab compares (engine 0.11.0)
+## How BakeLab compares (engine 0.11.0–0.12.0)
 
 Bake A is entered as a slab on a **wire rack with baking paper**. Bake B is entered as a slab in a **5 mm glass dish**, so its bottom is sealed and heated through the glass.
 
-| | Measured | Conduction only (0.9.x) | Steam term, open slab (0.10.0) | Steam term + real support (0.11.0) |
+| | Measured | Conduction only (0.9.x) | Steam term, open slab (0.10.0) | Steam term + real support (0.11.0 / 0.12.0) |
 |---|---|---|---|---|
 | A: centre reaches 97 °C | ~25 min | never (80 °C at 40 min) | 25 min *(fitted)* | 25 min *(fitted)* |
 | A: weight loss | 8.9 % | 10.1 % | 7.9 % | 7.7 % *(not fitted)* |
-| B: coldest point passes 93 °C | ~17 min | 23.8 min | 16.5 min | 16.0 min |
-| B: mid-depth reaches ~100 °C | ~21.7 min | 29.3 min | 20.0 min | 18.5 min |
+| B: coldest point passes 93 °C | ~17 min | 23.8 min | 16.5 min | 16.0 / 15.8 min |
+| B: mid-depth reaches ~100 °C | ~21.7 min | 29.3 min | 20.0 min | 18.5 / 18.3 min |
 | B: water lost | 15.0 g | 21.4 g | 20.7 g | **14.5 g** |
 
 The only fitted parameter is the steam term's effective vapour diffusivity, refitted on Bake A as 4.4×10⁻⁵ m²/s. Bake B was never used for fitting.
