@@ -50,6 +50,20 @@ python -m unittest discover -s tests -v
 
 The engine exports `simulate({"catalog": ingredients, "amounts": {"bread_flour":500, "water":340}, "settings": {"oven_c":220, "minutes":35, "thickness_mm":80}})`. It has **no scientific-package dependencies**. The ingredient catalogue is also used by the HTML app.
 
+## Engineering review — priorities after Claude's boiling fix (v0.9.2)
+
+Claude's [PR #1](https://github.com/Savageperson334/cooking-by-the-book/pull/1) fixed a concrete inconsistency: the 1D dough solver previously allowed liquid-bearing interior cells to become much hotter than water's approximate atmospheric boiling point. The new wet-cell boiling/evaporation cap improves physical consistency and extreme-oven mass loss. It does **not** yet make the loaf's heating curve quantitatively reliable: inward vapour migration and condensation (sometimes called an internal steam or heat-pipe effect) remain absent, and the centre can consequently warm far too slowly. Passing Python tests checks the implementation's contracts, **not** agreement with measured food temperatures.
+
+Suggested investigation order (project notes, not rigid agent instructions):
+
+1. **Resolve coupled heat/moisture transport first.** Examine vapour generation, migration, condensation and venting in a porous dough without double-counting water or latent energy. Test mass and energy balances; preserve the boiling constraint for wet regions. Compare the old conduction-only and proposed coupled model against representative centre/surface temperature traces.
+2. **Establish experimental reference cases and calibration.** Start with simple, well-defined pan geometry, initial mass, thickness, ambient pressure and temperature, oven setpoint and measured centre/surface temperatures and mass loss versus time. Keep at least some trials unseen during parameter fitting, and report discrepancies and uncertainty rather than simply tuning until a visually convincing loaf appears.
+3. **Couple upper-end reactions only when inputs justify it.** Current organic loss, triglyceride scission, char and ash calculations are screening post-processors: they do not feed reaction enthalpy, loss of material, evolving properties, oxygen availability or gas movement back into heat transfer. At 600°C they are useful for stress testing and qualitative ordering, **not** validated burn, smoke, ignition or residue predictions. Keep mechanical fissures separate from chemical chain scission.
+4. **Advance deformation and the viewport after the thermal foundation.** A physical fracture model ultimately needs moisture-dependent material strength, shrinkage and stress/strain, adhesion and geometry. Until then, the animated pan should clearly label heuristic crust cracks, shrinkage, oil layers, colour and charring as illustrative.
+5. **Add an actual browser integration test.** The repo's existing CI runs Python tests and static UI-contract checks; it does not prove a real Pyodide startup on a user's phone. Test a served build against the pinned runtime, a successful prediction, controls and common mobile widths, with a graceful offline/CDN failure.
+
+Useful near-term acceptance evidence: a reproducible wet-cell energy/mass budget; measured-versus-predicted centre and surface traces for at least one known loaf and pan; regression cases for pure water, banana/oat slurry, bread and oil at normal and extreme temperatures; and a plainly stated confidence boundary for each prediction. Don't treat a green CI run or a more realistic-looking animation as scientific validation.
+
 ## Roadmap
 
 1. Calibrate basic heat/moisture predictions with real baking trials and known geometries.
