@@ -1,17 +1,18 @@
 # BakeLab — experimental browser baking simulator
 
-**Running prototype v0.2** in the [Cooking by the Book](../../README.md) experiment toolkit.
+**Running prototype v0.4** in the [Cooking by the Book](../../README.md) experiment toolkit.
 
 [Open browser app](index.html) · [Scientific methods and limitations](MODEL.md) · [Python engine](engine.py) · [20-ingredient catalogue](ingredients.json)
 
 ## What works today
 
 - Responsive, dark-themed HTML interface with **20 ingredients**, individually adjustable in grams using sliders or precise numeric inputs.
-- Bread, enriched dough, cake-like batter and intentionally absurd high-water, all-dry, high-salt and oil-rich presets.
+- Bread, enriched dough, cake-like batter and intentionally absurd high-water, all-dry, high-salt, oil-rich, pure-water, pure-oil and sugar-syrup presets.
 - Sliders for **oven temperature, baking time, thickness, initial temperature, normalized steam level and fan, plus **proof duration and proof temperature**.
 - **Real time-dependent Python calculations**, not static recipe lookup. Python is loaded through **Pyodide** in a browser Web Worker.
 - A 1D **implicit finite-volume heat-flow solver** with approximate moisture diffusion, vapour loss and latent cooling; composition-dependent heat capacity/conductivity.
 - Centre, mid-depth and surface temperature curves; moisture and mass-loss curves; **new CO₂ generation and effective rise estimates**; provisional chemical-transformation indices; timestamp scrubber through temperature cross-sections.
+- An animated **Bake viewport**: a stylized oven/pan scene that changes with the simulated state (rise, browning, surface moisture, collapse tendency and warnings) while still exposing absurd or out-of-domain formulations.
 - Save and compare two scenarios (A/B) with fine-grained numerical differences. Export current run to JSON or time-series CSV.
 - Warnings for out-of-range materials/geometry. Non-finite or negative ingredient values are rejected rather than silently accepted.
 
@@ -60,3 +61,11 @@ The project should remain a general *food experiments* toolkit, not define the s
 - 26 automated Python tests, including continuous parameter sensitivity and extreme mixtures.
 
 **Interpretation:** These are directional/diagnostic model outputs for hypotheses. Rise percentages are not validated predictions of real loaf size. CO₂ venting is excluded from the water-only mass-loss balance, and a chemical-leavening proxy omits detailed acid chemistry. A truly physical baking model will need measured viscoelasticity, bubble transport, and calibration.
+
+## Bake viewport v0.4
+
+The oven/pan scene is an SVG **2.5D angled illustration** whose state is recomputed from the Python time series. Use **Replay bake**, **Pause**, 0.5–4× playback, the scene timeline, or the temperature cross-section timeline; both are synchronized. This is not a rendered 3D physics simulation.
+
+The illustration uses the current model's rise/thickness proxy, surface temperature, moisture loss, browning and composition to choose textures/colours and distinguish liquid, dry powder, high salt/sugar and nearly pure oil. For unrealistic compositions the viewport explicitly says *unsupported*: it never assumes that every ingredient mixture turns into a loaf. Granules, cracking, bubbling, steaming and the shape of the pan fill are **qualitative interpretations**, not measured or predicted internal microstructure.
+
+The remaining numerical solver is unchanged from v0.2. Rigorous visual prediction needs measured rheology, phase separation, a 3D geometry and a surface-colour calibration dataset.
