@@ -49,7 +49,7 @@ let catalog=[],amounts={},settings={...defaults},engineReady=false,last=null,req
 let snapshots={A:null,B:null};
 let playing=false,playHandle=0,playStart=0,playOrigin=0,playValue=100;
 const BAKE_PLAY_DURATION=16000; // milliseconds for 0..100 at 1x
-const worker = new Worker('./worker.js',{type:'module'});
+const worker = new Worker('./worker.js?ui=0.9.3',{type:'module'});
 worker.onmessage = ({data}) => {
   if(data.type==='ready') {
     engineReady=true;$('engine-dot').classList.add('ready');$('engine-status').textContent='Python model ready';$('run').disabled=false;
