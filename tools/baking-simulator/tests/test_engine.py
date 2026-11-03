@@ -146,7 +146,7 @@ class TestSolver(unittest.TestCase):
         with self.assertRaises(ValueError):run({'water':0})
 
     def test_invalid_setting_rejected(self):
-        with self.assertRaises(ValueError):run(oven_c=401)
+        with self.assertRaises(ValueError):run(oven_c=601)
         with self.assertRaises(ValueError):run(thickness_mm=0)
 
     def test_composition_properties_positive(self):

@@ -1,10 +1,10 @@
 # BakeLab — experimental browser baking simulator
 
-**Running prototype v0.7** in the [Cooking by the Book](../../README.md) experiment toolkit.
+**Running prototype v0.8** in the [Cooking by the Book](../../README.md) experiment toolkit.
 
 [Open browser app](index.html) · [Scientific methods and limitations](MODEL.md) · [Python engine](engine.py) · [20-ingredient catalogue](ingredients.json)
 
-## Mobile-first workspace (v0.7)
+## Mobile-first workspace (v0.8)
 
 On a phone, four tabs—**Ingredients**, **Process**, **Results**, and **Compare**—sit above the **always-visible bake preview**. The preview remains pinned below the tab bar while you scroll long ingredient lists or process controls. Switching tabs does not reset the simulated scenario, playback, or A/B snapshots.
 
@@ -96,3 +96,22 @@ A fluid-only recipe now uses [`liquids.py`](liquids.py), a compact energy/evapor
 - Mobile right-side **SCROLL ↓** rail lets you slide your thumb to scroll the long controls without changing ingredient amounts.
 
 **Test coverage:** Python unit tests for water depletion, pan depth, heating, mass conservation, milk skin, oil separation, syrup concentration, tiny parameter differences and extreme inputs; plus browser-smoke tests against mocked solver responses across phone, tablet and desktop sizes. Browser startup against the real Pyodide CDN still needs live verification on GitHub Pages.
+
+## v0.8: water + banana / rolled oats, longer ranges, and °C/°F
+
+**Two new demo presets:** *Banana + water → scorched solids* (500 g water + 250 g mashed banana) and *Rolled oats + water → toasted residue* (600 g water + 200 g oats). These deliberately switch the **Process** tab to a 260°C oven, 240-minute run and 15-mm starting depth to reveal drying/browning stages. Ordinary presets still retain your existing process settings. You can scrub the preview from the beginning to the end to inspect slurry → paste → residue; the pan height follows the computed remaining mass rather than being kept full.
+
+The new **suspension branch** in [`liquids.py`](liquids.py) is a well-mixed heat/water evaporation model augmented by *qualitative* moisture-driven state, oat hydration, and residue-browning indices. It is not a physically resolved pulp, porridge, or surface chemistry simulation. When enough liquid is lost, banana/oat/milk solids remain in the pan instead of evaporating along with the water. Pure water leaves an empty pan and must **not** brown. A concentrated milk or banana residue can darken after water evaporation, using a time-temperature-moisture-gated *screening index*. Don't interpret that number as experimentally predicted charring.
+
+**Temperature units:** the Process tab displays both Celsius and Fahrenheit for each temperature field and offers a switch to make sliders operate in °C or °F. The Python solver's inputs and exported JSON are **always in °C**. Results show °C and °F; the temperature chart's vertical axis switches units. The app supports oven setpoints up to **600°C / 1112°F** and bake duration up to **1440 min / 24 h** for numerical stress-testing, **not** advice to use actual equipment at those extremes. Long, thin dough simulations may use coarsened time steps, with a warning.
+
+**New charts and data:** oats hydration proxy, residue browning proxy, remaining-water and total-solid fractions, and CSV export fields. The dual-phase and milk/syrup functionality from v0.7 remains.
+
+### Scientific cautions
+
+- Volume uses additive component densities; real slurries, starch gels and sticky fruit reductions are neither ideal mixtures nor well-mixed during evaporation.
+- The current solid residue temperature may approach the oven setpoint much faster than a real browned surface once there is little water left; the model is **not** a validated burn time, fire-risk, sensory, colour or food-safety prediction.
+- Oat hydration is an uncalibrated heat-and-time surrogate. Individual oat particles, swelling kinetics, starch granule gelatinization and surface crust mechanics are not yet solved.
+- The qualitative darkening curve is monotone and lacks oxidation kinetics, moisture-dependent nutrient chemistry, pyrolysis, ash formation, or real colourimetry.
+
+For source literature and modelling gaps, see [MODEL.md](MODEL.md). Tests include extreme-duration/oven runs, pure water no-browning, banana and oat dry-down and small perturbations.

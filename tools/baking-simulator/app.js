@@ -12,6 +12,11 @@ const ingredientVisuals={
 };
 const categories=['Grains','Liquids','Fats','Sweeteners','Leavening & salts','Starches & proteins'];
 const defaults={oven_c:220,minutes:35,thickness_mm:80,initial_c:22,steam_pct:5,fan:0,proof_minutes:60,proof_c:26};
+const cToF=c=>c*9/5+32;
+const fToC=f=>(f-32)*5/9;
+const bothTemps=c=>`${fmt(c,1)} °C / ${fmt(cToF(c),1)} °F`;
+let temperatureUnit='C';
+const temperatureKeys=new Set(['oven_c','initial_c','proof_c']);
 const presets={
   bread:{bread_flour:500,water:340,salt:10,instant_yeast:5,sugar:10},
   rich:{bread_flour:500,milk:270,egg:100,butter:100,sugar:90,salt:9,instant_yeast:8},
@@ -25,13 +30,15 @@ const presets={
   watermilk:{water:500,milk:500},
   oilwater:{water:500,olive_oil:500},
   syrup:{sugar:1000,water:220},
-  pureoil:{olive_oil:1000}
+  pureoil:{olive_oil:1000},
+  bananadry:{water:500,banana:250},
+  oatporridge:{water:600,oats:200}
 };
 const settingDefs=[
   ['proof_minutes','Proofing duration','min',0,720,1],
   ['proof_c','Proofing temperature','°C',-10,55,0.5],
-  ['oven_c','Oven temperature','°C',-20,400,1],
-  ['minutes','Baking time','min',0,300,0.5],
+  ['oven_c','Oven temperature','°C',-20,600,1],
+  ['minutes','Baking time','min',0,1440,1],
   ['thickness_mm','Initial sample depth','mm',2,250,1],
   ['initial_c','Initial dough temperature','°C',-20,100,1],
   ['steam_pct','Oven water vapour level','%*',0,100,1],
@@ -60,7 +67,17 @@ worker.onerror=err=>{showError(String(err.message||'Browser worker failed'));$('
 function showError(message){$('error').textContent=message;$('error').hidden=false;}
 function currentInputs(){return {amounts:{...amounts},settings:{...settings}};}
 function createElement(tag,attrs={},children=[]){const e=document.createElement(tag);for(const [k,v] of Object.entries(attrs)){if(k==='text')e.textContent=v;else if(k==='class')e.className=v;else e.setAttribute(k,String(v));}for(const child of children)e.append(child);return e;}
-function loadPreset(id){const initial=presets[id]||presets.bread;for(const item of catalog){amounts[item.id]=Number(initial[item.id]||0);}updateControls();queueRun();}
+function loadPreset(id){
+ const initial=presets[id]||presets.bread;
+ for(const item of catalog){amounts[item.id]=Number(initial[item.id]||0);}
+ // Demo presets provide controlled thin-pan conditions; other presets keep
+ // whatever temperature and duration the user last selected.
+ if(id==='bananadry'||id==='oatporridge'){
+   settings={...settings,oven_c:260,minutes:240,thickness_mm:15,initial_c:22};
+   $('process-controls').replaceChildren();renderSettings();
+ }
+ updateControls();queueRun();
+}
 function updateControls(){for(const item of catalog){const row=document.querySelector(`[data-ingredient="${item.id}"]`);if(!row)continue;row.querySelector('input[type=number]').value=amounts[item.id];row.querySelector('input[type=range]').value=Math.min(amounts[item.id],Number(item.max));}updateMass();}
 function updateMass(){const t=Object.values(amounts).reduce((a,b)=>a+Number(b||0),0);$('total-mass').textContent=fmt(t,1)+' g';}
 function renderIngredients(){
@@ -86,19 +103,44 @@ function renderIngredients(){
     wrapper.append(details);
   }
 }
-function renderSettings(){const wrapper=$('process-controls');
-  for(const [key,label,unit,min,max,step] of settingDefs){
+function renderSettings(){
+ const wrapper=$('process-controls');
+ const unitPicker=createElement('div',{class:'unit-picker'});
+ unitPicker.append(createElement('span',{text:'Temperature controls · also shown in both units'}));
+ const switcher=createElement('button',{class:'secondary unit-switch',type:'button',text:`Adjust in °${temperatureUnit} · switch to °${temperatureUnit==='C'?'F':'C'}`,'aria-label':'Switch temperature slider units'});
+ switcher.addEventListener('click',()=>{temperatureUnit=temperatureUnit==='C'?'F':'C';wrapper.replaceChildren();renderSettings();renderResult();});
+ unitPicker.append(switcher);wrapper.append(unitPicker);
+ for(const [key,label,unit,min,max,step] of settingDefs){
+    const temperature=temperatureKeys.has(key);
     const row=createElement('div',{class:'setting'});
     const head=createElement('div',{class:'setting-head'});
-    const name=createElement('span',{text:label}),val=createElement('strong',{text:fmt(settings[key],step<1?1:0)+' '+unit});
-    head.append(name,val);
-    const slider=createElement('input',{type:'range',min,max,step,value:settings[key],'aria-label':label});
-    slider.addEventListener('input',()=>{settings[key]=Number(slider.value);val.textContent=fmt(settings[key],step<1?1:0)+' '+unit;queueRun();});
-    row.append(head,slider);if(key==='thickness_mm')row.append(createElement('div',{class:'subtle',text:'For liquids, the starting depth in an open pan; for dough, the initial slab thickness before proof.'}));
+    const name=createElement('span',{text:label}),val=createElement('strong');
+    const present=()=>{
+      if(temperature){
+        const active=temperatureUnit==='C'?settings[key]:cToF(settings[key]);
+        const alternate=temperatureUnit==='C'?cToF(settings[key]):settings[key];
+        val.textContent=`${fmt(active,1)} °${temperatureUnit} · ${fmt(alternate,1)} °${temperatureUnit==='C'?'F':'C'}`;
+      }else val.textContent=`${fmt(settings[key],step<1?1:0)} ${unit}`;
+    };
+    present();head.append(name,val);
+    const displayMin=temperature&&temperatureUnit==='F'?cToF(min):min;
+    const displayMax=temperature&&temperatureUnit==='F'?cToF(max):max;
+    const displayStep=temperature&&temperatureUnit==='F'?1:step;
+    const displayValue=temperature&&temperatureUnit==='F'?cToF(settings[key]):settings[key];
+    const slider=createElement('input',{type:'range',min:displayMin,max:displayMax,step:displayStep,value:displayValue,'aria-label':`${label} (${temperature?'°'+temperatureUnit:unit})`});
+    slider.addEventListener('input',()=>{
+      const selected=Number(slider.value);
+      settings[key]=temperature&&temperatureUnit==='F'?fToC(selected):selected;
+      present();queueRun();
+    });
+    row.append(head,slider);
+    if(key==='thickness_mm')row.append(createElement('div',{class:'subtle',text:'For liquids, the starting depth in an open pan; for dough, the initial slab thickness before proof.'}));
+    if(key==='minutes')row.append(createElement('div',{class:'subtle',text:'Extended to 24 hours for stress testing; extreme durations are not safe-cooking recommendations.'}));
+    if(key==='oven_c')row.append(createElement('div',{class:'subtle',text:'Extended to 600°C / 1112°F. Beyond ordinary ovens, these are numerical stress tests only.'}));
     if(key==='steam_pct')row.append(createElement('div',{class:'subtle',text:'* Vapour pressure / water saturation at 100°C; not oven RH.'}));
     if(key==='proof_minutes')row.append(createElement('div',{class:'subtle',text:'Pre-bake fermentation. Empirical CO₂ rates only; no measured calibration.'}));
     wrapper.append(row);
-  }
+ }
 }
 function queueRun(delay=360){
   if(!engineReady)return;
@@ -111,7 +153,7 @@ function renderResult(){
   if(!last)return;
   const r=last.result,s=r.summary;
   const boxes=$('metrics').children;
-  const vals=[[fmt(s.center_c,2)+' °C','Centre temperature'],[fmt(s.surface_c,2)+' °C','Surface temperature'],[fmt(s.mass_loss_pct,2)+' %','Of initial mass'],[fmt(s.browning_index,2),'Relative index · uncalibrated'],[fmt(s.rise_pct,2)+' %','Volume proxy · uncalibrated'],[fmt(s.co2_generated_g,3)+' g','CO₂ potential estimate']];
+  const vals=[[bothTemps(s.center_c),'Centre temperature'],[bothTemps(s.surface_c),'Surface temperature'],[fmt(s.mass_loss_pct,2)+' %','Of initial mass'],[fmt(s.browning_index,2),'Relative index · uncalibrated'],[fmt(s.rise_pct,2)+' %','Volume proxy · uncalibrated'],[fmt(s.co2_generated_g,3)+' g','CO₂ potential estimate']];
   vals.forEach((pair,i)=>{boxes[i].querySelector('strong').textContent=pair[0];boxes[i].querySelector('small').textContent=pair[1];});
   const segments=['water','starch','protein','fat','sugar','fiber','ash'];
   const comp=r.summary, proportions={water:comp.water_pct,starch:comp.starch_pct,protein:comp.protein_pct,fat:comp.fat_pct,sugar:comp.sugar_pct,fiber:comp.fiber_pct,ash:comp.ash_pct};
@@ -128,8 +170,8 @@ function renderResult(){
     $('fluid-depth').textContent=fmt(s.liquid_depth_mm,2)+' mm';
     $('fluid-volume').textContent=fmt(s.liquid_volume_ml,1)+' mL';
     $('fluid-water').textContent=fmt(s.water_remaining_g,1)+' g';
-    $('fluid-mode').textContent=({aqueous:'Water-rich',biphasic:'Oil + water',syrup:'Sugar-rich',oil:'Oil-rich'})[s.liquid_mode]||s.liquid_mode;
-    $('computed-note').textContent=`Initial ${fmt(s.total_g,1)} g → ${fmt(s.end_mass_g,1)} g remaining (water-only loss). Open pan: estimated footprint ${fmt(s.pan_area_cm2,1)} cm², initial depth ${fmt(r.settings.thickness_mm,1)} mm. Heat and evaporation are calculated with a well-mixed approximation; layering, milk film and syrup darkening are illustration-only proxies.`;
+    $('fluid-mode').textContent=s.residue_state||({aqueous:'Water-rich',biphasic:'Oil + water',syrup:'Sugar-rich',oil:'Oil-rich',suspension:'Fruit/grain slurry'})[s.liquid_mode]||s.liquid_mode;
+    $('computed-note').textContent=`Initial ${fmt(s.total_g,1)} g → ${fmt(s.end_mass_g,1)} g remaining (water-only loss). Open pan: estimated footprint ${fmt(s.pan_area_cm2,1)} cm², starting depth ${fmt(r.settings.thickness_mm,1)} mm; remaining solids ${fmt(s.solids_fraction_pct,1)}% by mass. Water and heat use a well-mixed approximation; banana/oat hydration, crust darkening and scorching are uncalibrated indices.`;
   } else {
     $('computed-note').textContent=`Initial ${fmt(s.total_g,1)} g → estimated ${fmt(s.end_mass_g,1)} g water-loss-only; effective slab thickness ${fmt(s.thickness_mm_est,1)} mm. Proof-only rise ${fmt(s.proof_rise_pct,1)}%; retention factor ${fmt(s.gas_retention_factor,3)}. ${r.metadata.grid_cells} spatial cells, ${r.metadata.steps.toLocaleString()} steps. Gas chemistry is uncalibrated and CO₂ venting is excluded from mass totals.`;
   }
@@ -179,9 +221,9 @@ function mixtureVisual(frame,d){
   const heatedSyrup=clamp((frame.syrup_thickening_index_pct||0)/100,0,1);
   if(d.liquidMode==='aqueous' && dairyShare>.1) interior=toneColor(interior,'#d3be91',heatedMilk*0.30);
   if(d.sugary) interior=toneColor(interior,'#ad632a',heatedSyrup*0.60);
-  const heatAmt=clamp((d.brown/100)+(d.surface-125)/170,0,1);
-  const top=d.liquidish ? toneColor(interior,'#fff6da',0.10+heatedMilk*0.36) : toneColor(interior, d.burnt ? '#382018' : '#8a532f', heatAmt*0.7);
-  const side=d.liquidish ? toneColor(interior,'#1b2430',0.08) : toneColor(interior,'#5e3c29',heatAmt*0.45);
+  const heatAmt=d.liquidMode?clamp(d.brown/100,0,1):clamp((d.brown/100)+(d.surface-125)/170,0,1);
+  const top=d.liquidish ? toneColor(interior,'#fff6da',0.10+heatedMilk*0.36) : toneColor(interior, d.burnt ? '#23120c' : '#8a532f', heatAmt*0.86);
+  const side=d.liquidish ? toneColor(interior,'#1b2430',0.08) : toneColor(interior,'#271810',heatAmt*0.67);
   return {base:interior, top, side, glaze:toneColor(top,'#fff9e6',0.28), shadow:toneColor(side,'#1a1110',0.35)};
 }
 function ingredientAmount(id){return Number(amounts[id]||0);} 
@@ -195,18 +237,21 @@ function visualDescriptor(frame){
   const rise=frame.rise_pct||0, brown=frame.browning_index||0, center=frame.center_c||0, surface=frame.surface_c||0, massLoss=frame.mass_loss_pct||0;
   const wetness=clamp((water-0.18)/0.45,0,1), richness=clamp((fat*0.9+sugar*0.65),0,1), dryness=clamp(1-wetness*0.9-massLoss/40,0,1);
   const liquidMode=s.liquid_mode||null;
-  const liquidish = liquidMode ? liquidMode!=='oil' : (wetness>0.72 && protein<0.1 && starch<0.3);
-  const oily = liquidMode ? liquidMode==='oil' : fat>0.50;
-  const sugary = liquidMode ? liquidMode==='syrup' : (sugar>0.58 && water>0.10 && fat<0.4);
+  const residueState=frame.residue_state||'';
+  const isResidue=Boolean(liquidMode && ['paste','concentrate','dry residue','scorched'].includes(residueState));
+  const isDryResidue=Boolean(liquidMode && ['dry residue','scorched'].includes(residueState));
+  const liquidish=liquidMode ? !isResidue&&liquidMode!=='oil' : (wetness>0.72 && protein<0.1 && starch<0.3);
+  const oily=liquidMode ? liquidMode==='oil' : fat>0.50;
+  const sugary=liquidMode ? liquidMode==='syrup' : (sugar>0.58 && water>0.10 && fat<0.4);
   const biphasic = liquidMode==='biphasic';
-  const powdery = !liquidMode && water<0.12 && rise<8 && !oily && !sugary;
+  const powdery = (!liquidMode && water<0.12 && rise<8 && !oily && !sugary) || (isDryResidue && ingredientAmount('oats')>0 && !oily);
   const salty = saltRatio>0.16; 
   const cakey = richness>0.16 && bpRatio>0.012 && protein<0.12;
   const domed = rise>12 && !liquidish;
   const overexpanded = rise>60 && (protein<0.11 || wetness>0.68);
   const collapsed = overexpanded && (surface>165 || frame.co2_retained_g < frame.co2_generated_g*0.55 || massLoss>12);
   const cracked = (massLoss>8 && surface>135 && !liquidish) || powdery;
-  const burnt = brown>78 || surface>215;
+  const burnt = liquidMode ? brown>78 : brown>78 || surface>215;
   const underbaked = center<86 && surface<140;
   const boiling = liquidish && frame.water_remaining_g>0 && surface>=96;
   let label='Setting loaf';
@@ -228,16 +273,21 @@ function visualDescriptor(frame){
     else if(Number(frame.liquid_depth_mm||0)<0.02) label='Water evaporated · empty pan';
     else label='Water gone · concentrated residue';
   }
-  let note=`Surface ${fmt(surface,1)} °C · centre ${fmt(center,1)} °C · water loss ${fmt(massLoss,1)}%`;
+  if(liquidMode==='suspension'){
+    const material=ingredientAmount('banana')>ingredientAmount('oats')?'banana':'oats';
+    label=residueState==='scorched'?`${material} · scorched residue`:residueState==='dry residue'?`${material} · drying/toasting`:residueState==='paste'?`${material} · thickening paste`:`${material} · soaking slurry`;
+  }
+  let note=`Surface ${bothTemps(surface)} · centre ${bothTemps(center)} · water loss ${fmt(massLoss,1)}%`;
   if(oily) note='Oil-rich pan: temperature is modeled; oil smoking, ignition and oxidation are not.';
   else if(biphasic) note='Added oil may separate and float over the aqueous phase. Layer timing is illustrative.';
   else if(sugary) note='The sugar mass fraction rises as water evaporates. Viscosity, crystallization and colour remain illustrative.';
   else if(salty) note='Large salt fraction: dissolution/crystal behaviour is unsupported; no loaf shape prediction.';
   else if(collapsed) note='Gas generation outruns structure in this proxy; sagging is illustrative only.';
+  else if(liquidMode==='suspension') note=`${residueState}: remaining solids ${fmt(frame.solids_fraction_pct,1)}%, residue browning ${fmt(frame.residue_browning_index,1)}% (experimental).`;
   else if(liquidish) note='High free-water formula: the viewport stays shallow and glossy, and the pool visibly recedes as evaporation increases.';
   else if(powdery) note='Low-water extreme: poor cohesion, little expansion and a rough, cracked top.';
   else if(burnt) note='The browning index is high, so the viewport darkens and exaggerates crust contrast.';
-  return {water,fat,protein,sugar,starch,wetness,richness,dryness,liquidMode,biphasic,liquidish,powdery,oily,sugary,salty,cakey,domed,overexpanded,collapsed,cracked,burnt,underbaked,boiling,label,note,saltRatio,yeastRatio,bpRatio,rise,brown,surface,center,massLoss};
+  return {water,fat,protein,sugar,starch,wetness,richness,dryness,liquidMode,residueState,isResidue,isDryResidue,biphasic,liquidish,powdery,oily,sugary,salty,cakey,domed,overexpanded,collapsed,cracked,burnt,underbaked,boiling,label,note,saltRatio,yeastRatio,bpRatio,rise,brown,surface,center,massLoss};
 }
 function drawBakeScene(frame){
   const svg=$('bake-scene'); if(!svg || !last) return; svg.replaceChildren();
@@ -270,9 +320,9 @@ function drawBakeScene(frame){
   let crown=clamp((d.rise*0.36)+(d.cakey?8:0)+(d.liquidish?-10:0)-(d.powdery?6:0),0,50);
   const visual=mixtureVisual(frame,d);
   if(d.collapsed) crown*=0.22;
-  if(d.liquidish || d.oily || d.sugary) crown=0;
+  if(d.liquidMode || d.oily || d.sugary) crown=0;
   const spill=Math.max(0, 128-topY);
-  const crust=(d.oily?toneColor(visual.top,'#4f3b1b',0.16):d.liquidish?toneColor(visual.top,'#fefefe',0.06):d.sugary?toneColor(visual.top,'#7f461b',0.28):toneColor(visual.top, d.burnt ? '#261713' : '#8f5831', clamp((d.brown/100)+(d.surface-120)/150,0,1)*0.45));
+  const crust=d.liquidMode ? (d.liquidish?toneColor(visual.top,'#fefefe',0.05):toneColor(visual.top, d.burnt?'#1b0e09':'#8b512e',clamp(d.brown/100,0,1)*0.92)) : toneColor(visual.top, d.burnt?'#261713':'#8f5831',clamp((d.brown/100)+(d.surface-120)/150,0,1)*0.45);
   const crumb=(d.oily?toneColor(visual.base,'#715428',0.18):d.liquidish?toneColor(visual.base,'#ece1bf',0.04):d.sugary?toneColor(visual.base,'#8a552b',0.12):toneColor(visual.base,'#c79162', clamp((d.brown/140)+d.fat*0.55,0,1)*0.25));
   const panTopFace=`${panL},${panTop} ${panR},${panTop} ${panR+panDepth},${panTop-panDepth} ${panL+panDepth},${panTop-panDepth}`;
   const panFront=`${panL},${panTop} ${panR},${panTop} ${panR},${panTop+panHeight} ${panL},${panTop+panHeight}`;
@@ -294,8 +344,8 @@ function drawBakeScene(frame){
   let sag = d.collapsed ? 18+0.18*d.rise : 0;
   let ripple = d.liquidish ? 4+2*Math.sin(frame.minute*0.35) : 0;
   let topPath=`M ${leftInner} ${topBase} C ${cp1} ${topBase-crown+ripple} ${cp2} ${topBase-crown+ripple+sag} ${rightInner} ${topBase}`;
-  if(d.liquidish || d.oily || d.sugary) topPath=`M ${leftInner} ${topBase} C ${cp1} ${topBase+ripple} ${cp2} ${topBase-ripple} ${rightInner} ${topBase}`;
-  if(d.powdery) topPath=`M ${leftInner} ${topBase+3} C ${cp1} ${topBase-crown*0.2-4} ${cp2} ${topBase-crown*0.15+9} ${rightInner} ${topBase+1}`;
+  if(d.liquidish || d.oily || (d.sugary&&!d.isResidue)) topPath=`M ${leftInner} ${topBase} C ${cp1} ${topBase+ripple} ${cp2} ${topBase-ripple} ${rightInner} ${topBase}`;
+  if(d.isDryResidue || d.powdery) topPath=`M ${leftInner} ${topBase+3} C ${cp1} ${topBase-crown*0.2-4} ${cp2} ${topBase-crown*0.15+9} ${rightInner} ${topBase+1}`;
   const frontPath=`${topPath} L ${rightInner} ${panTop+panHeight-9} L ${leftInner} ${panTop+panHeight-9} Z`;
   const backPath=`M ${leftInner+backLift} ${topBase-backLift} C ${cp1+backLift} ${topBase-crown+ripple-backLift} ${cp2+backLift} ${topBase-crown+ripple+sag-backLift} ${rightInner+backLift} ${topBase-backLift} L ${rightInner+backLift} ${panTop+panHeight-9-backLift} L ${leftInner+backLift} ${panTop+panHeight-9-backLift} Z`;
   const containsMaterial = !d.liquidMode || Number(frame.liquid_depth_mm||0)>0.01;
@@ -322,6 +372,16 @@ function drawBakeScene(frame){
       for(let i=0;i<4;i++){
         const x=leftInner+30+i*79;
         svg.append(svgEl('path',{d:`M ${x} ${topBase-9} q 9 -4 17 -1 q 8 3 16 -2`,fill:'none',stroke:'#e8cda0','stroke-width':1.4,opacity:0.70*skin}));
+      }
+    }
+    if(d.isResidue){
+      const roughness=clamp((frame.solids_fraction_pct||0)/100,0,1);
+      const darkness=clamp((frame.residue_browning_index||0)/100,0,1);
+      const dots=Math.round(12+roughness*25);
+      for(let i=0;i<dots;i++){
+        const x=leftInner+14+(i*67)%Math.max(80,rightInner-leftInner-28);
+        const y=topBase-4-(i*13)%Math.max(5,Math.round(8+roughness*13));
+        svg.append(svgEl('ellipse',{cx:x,cy:y,rx:2.1+(i%3),ry:1.0+(i%2),fill:darkness>.7?'#120a08':'#6c4e2b',opacity:0.12+roughness*0.34}));
       }
     }
     const thick=clamp(Number(frame.syrup_thickening_index_pct||0)/100,0,1);
@@ -402,7 +462,7 @@ function drawBakeScene(frame){
   }
   if(!compactScene){
   svgText(svg,{x:97,y:84,class:'scene-label'},'ANGLED PAN · ILLUSTRATIVE');
-  svgText(svg,{x:97,y:101,class:'scene-subtle'},`t = ${fmt(frame.minute,1)} min · oven ${fmt(last.result.settings.oven_c,0)} °C`);
+  svgText(svg,{x:97,y:101,class:'scene-subtle'},`t = ${fmt(frame.minute,1)} min · oven ${bothTemps(last.result.settings.oven_c)}`);
   svgText(svg,{x:97,y:118,class:'scene-subtle'},`effective thickness ${fmt(frame.thickness_mm_est,1)} mm · rise ${fmt(frame.rise_pct,1)}%`);
   if(last.result.warnings.length){
     svgText(svg,{x:540,y:84,class:'scene-warning','text-anchor':'start'},'⚠ model boundary');
@@ -414,18 +474,19 @@ function drawChart(){
  const svg=$('chart');svg.replaceChildren();if(!last)return;
  const t=last.result.timeline;const maxT=Math.max(1,t.at(-1).minute);const metric=$('metric').value;
  let lines;
- if(metric==='temp')lines=[['center_c','Center',colors.center],['mid_c','Mid-depth',colors.mid],['surface_c','Surface',colors.surface]];
+ if(metric==='temp')lines=[['center_c','Center (°'+temperatureUnit+')',colors.center],['mid_c','Mid-depth (°'+temperatureUnit+')',colors.mid],['surface_c','Surface (°'+temperatureUnit+')',colors.surface]];
  else if(metric==='moisture')lines=[['center_moisture_pct','Center',colors.center],['surface_moisture_pct','Surface',colors.blue||colors.mid]];
  else if(metric==='mass')lines=[['mass_loss_pct','Water lost',colors.surface]];
  else if(metric==='rise')lines=[['rise_pct','Estimated expansion',colors.center]];
  else if(metric==='gas')lines=[['co2_generated_g','CO₂ generated, g',colors.surface],['co2_retained_g','CO₂ retained, g',colors.mid]];
- else if(metric==='liquid' || metric==='concentration'){
+ else if(['liquid','concentration','hydration','residue'].includes(metric)){
    if(!last.result.summary.liquid_mode){svgText(svg,{x:380,y:150,'text-anchor':'middle',fill:'#9cafa9','font-size':16},'Fluid-only measurement; select a liquid preset.');$('legend').replaceChildren();return;}
-   lines=metric==='liquid'?[['liquid_depth_mm','Depth · mm',colors.mid]]:[['sugar_concentration_pct','Sugar fraction · %',colors.surface]];
+   lines=metric==='liquid'?[['liquid_depth_mm','Depth · mm',colors.mid]]:metric==='concentration'?[['sugar_concentration_pct','Sugar fraction · %',colors.surface]]:metric==='hydration'?[['oat_hydration_index_pct','Hydration proxy · %',colors.center]]:[['residue_browning_index','Residue browning · %',colors.surface]];
  }
  else if(metric==='change')lines=[['starch_progress_pct','Gelatinization proxy',colors.center],['protein_progress_pct','Protein proxy',colors.mid]];
  else lines=[['browning_index','Browning index',colors.surface]];
- const all=lines.flatMap(([key])=>t.map(row=>row[key]));let ymax=Math.max(1,...all);let ymin=Math.min(0,...all);
+ const displayed=(key,raw)=>metric==='temp'&&temperatureUnit==='F'?cToF(raw):raw;
+ const all=lines.flatMap(([key])=>t.map(row=>displayed(key,row[key])));let ymax=Math.max(1,...all);let ymin=Math.min(0,...all);
  const extra=(ymax-ymin)*0.07||1;ymax+=extra;ymin-=extra;
  const left=56,top=15,w=685,h=245;
  for(let i=0;i<=5;i++){
@@ -436,7 +497,7 @@ function drawChart(){
   const x=left+i*w/5;const l=svgEl('text',{x,y:top+h+23,'text-anchor':'middle',fill:'#9cafa9','font-size':12});l.textContent=fmt(maxT*i/5,1);svg.append(l);
  }
  const xlabel=svgEl('text',{x:left+w/2,y:305,'text-anchor':'middle',fill:'#9cafa9','font-size':12});xlabel.textContent='MINUTES';svg.append(xlabel);
- for(const [key,name,color] of lines){const d=t.map((row,i)=>(i?'L':'M')+(left+w*row.minute/maxT).toFixed(2)+' '+(top+h*(1-(row[key]-ymin)/(ymax-ymin))).toFixed(2)).join(' ');
+ for(const [key,name,color] of lines){const d=t.map((row,i)=>(i?'L':'M')+(left+w*row.minute/maxT).toFixed(2)+' '+(top+h*(1-(displayed(key,row[key])-ymin)/(ymax-ymin))).toFixed(2)).join(' ');
  svg.append(svgEl('path',{d,fill:'none',stroke:color,'stroke-width':2.7,'stroke-linejoin':'round'}));}
  const leg=$('legend');leg.replaceChildren();for(const [,name,color] of lines){const item=createElement('span');const sw=createElement('i');sw.style.background=color;item.append(sw,name);leg.append(item);}
 }
@@ -479,8 +540,15 @@ function updateScrub(val){if(!last)return;
    const sugar=Number(frame.sugar_concentration_pct||0);
    const details=[`${fmt(frame.liquid_depth_mm,2)} mm deep`,`${fmt(frame.liquid_volume_ml,1)} mL left`];
    if(Number(frame.oil_layer_mm||0)>0.1)details.push(`oil layer ~${fmt(frame.oil_layer_mm,1)} mm`);
-   if(sugar>25)details.push(`sugar ${fmt(sugar,1)}% of sugar+water`);
+   if(last.result.summary.liquid_mode==='suspension'){
+     details.push(`${frame.residue_state||'slurry'}`);
+     details.push(`solids ${fmt(frame.solids_fraction_pct,1)}%`);
+     details.push(`darkening ${fmt(frame.residue_browning_index,1)} / 100 (estimated)`);
+   }else if(sugar>25)details.push(`sugar ${fmt(sugar,1)}% of sugar+water`);
    materialNote.textContent=details.join(' · ');
+   // Colour swatch makes a sub-millimetre residue visible without falsely
+   // inflating its calculated height in the pan drawing.
+   materialNote.style.borderLeft=`7px solid ${mixtureVisual(frame,visualDescriptor(frame)).top}`;
  }else{materialNote.hidden=true;materialNote.textContent='';}
  drawBakeScene(frame);
  const svg=$('cross-section');svg.replaceChildren();
@@ -491,16 +559,16 @@ function updateScrub(val){if(!last)return;
    svg.append(svgEl('rect',{x:10+i*740/n,y:10,width:740/n+1,height:90,fill:`rgb(${rgb.join(',')})`}));
  }
  svg.append(svgEl('rect',{x:10,y:10,width:740,height:90,rx:3,fill:'none',stroke:'#69807a','stroke-width':1}));
- [['CENTER',frame.center_c,14],['SURFACE',frame.surface_c,620]].forEach((a,i)=>{let text=svgEl('text',{x:a[2],y:119,fill:'#9cafa9','font-size':11});text.textContent=`${a[0]} ${fmt(a[1],1)} °C`;svg.append(text);});
+ [['CENTER',frame.center_c,14],['SURFACE',frame.surface_c,620]].forEach((a,i)=>{let text=svgEl('text',{x:a[2],y:119,fill:'#9cafa9','font-size':11});text.textContent=`${a[0]} ${fmt(a[1],1)} °C / ${fmt(cToF(a[1]),1)} °F`;svg.append(text);});
 }
 function renderComparison(){const a=snapshots.A,b=snapshots.B;if(!a&&!b){$('comparison').textContent='Save snapshots using A and B. The numbers are independent model runs, not measurements.';return;}
- const rows=[['Oven (°C)',x=>x.inputs.settings.oven_c],['Bake (min)',x=>x.inputs.settings.minutes],['Proof (min)',x=>x.inputs.settings.proof_minutes],['Water in mix (%)',x=>x.result.summary.water_pct],['Center (°C)',x=>x.result.summary.center_c],['Surface (°C)',x=>x.result.summary.surface_c],['Mass lost (%)',x=>x.result.summary.mass_loss_pct],['Liquid depth (mm)',x=>x.result.summary.liquid_depth_mm??null],['Remaining volume (mL)',x=>x.result.summary.liquid_volume_ml??null],['Water remaining (g)',x=>x.result.summary.water_remaining_g??null],['Rise proxy (%)',x=>x.result.summary.rise_pct],['CO₂ formed (g)',x=>x.result.summary.co2_generated_g],['Browning index',x=>x.result.summary.browning_index]];
+ const rows=[['Oven (°C)',x=>x.inputs.settings.oven_c],['Bake (min)',x=>x.inputs.settings.minutes],['Proof (min)',x=>x.inputs.settings.proof_minutes],['Water in mix (%)',x=>x.result.summary.water_pct],['Center (°C)',x=>x.result.summary.center_c],['Surface (°C)',x=>x.result.summary.surface_c],['Mass lost (%)',x=>x.result.summary.mass_loss_pct],['Liquid depth (mm)',x=>x.result.summary.liquid_depth_mm??null],['Remaining volume (mL)',x=>x.result.summary.liquid_volume_ml??null],['Water remaining (g)',x=>x.result.summary.water_remaining_g??null],['Rise proxy (%)',x=>x.result.summary.rise_pct],['CO₂ formed (g)',x=>x.result.summary.co2_generated_g],['Browning index',x=>x.result.summary.browning_index],['Residue browning proxy',x=>x.result.summary.residue_browning_index??null]];
  const table=createElement('table');const head=createElement('tr');['Metric','A','B','Δ B–A'].forEach(x=>head.append(createElement('th',{text:x})));table.append(head);
  for(const [label,get] of rows){const tr=createElement('tr');tr.append(createElement('td',{text:label}));const av=a?get(a):null,bv=b?get(b):null;[av,bv,av!=null&&bv!=null?bv-av:null].forEach(x=>tr.append(createElement('td',{text:x==null?'—':fmt(x,2)})));table.append(tr);}
  $('comparison').replaceChildren(table);
 }
 function download(name,text,contentType){const blob=new Blob([text],{type:contentType});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-function exportCSV(){if(!last)return;const arr=last.result.timeline;const keys=['minute','center_c','mid_c','surface_c','mass_loss_pct','center_moisture_pct','surface_moisture_pct','starch_progress_pct','protein_progress_pct','browning_index','rise_pct','thickness_mm_est','co2_generated_g','co2_retained_g','liquid_depth_mm','liquid_volume_ml','water_remaining_g','sugar_concentration_pct','milk_skin_index_pct','oil_layer_mm','separation_index_pct'];const rows=[keys.join(','),...arr.map(o=>keys.map(k=>o[k]??'').join(','))];download('bakelab-timeseries.csv',rows.join('\n'),'text/csv');}
+function exportCSV(){if(!last)return;const arr=last.result.timeline;const keys=['minute','center_c','mid_c','surface_c','mass_loss_pct','center_moisture_pct','surface_moisture_pct','starch_progress_pct','protein_progress_pct','browning_index','rise_pct','thickness_mm_est','co2_generated_g','co2_retained_g','liquid_depth_mm','liquid_volume_ml','water_remaining_g','sugar_concentration_pct','milk_skin_index_pct','oil_layer_mm','separation_index_pct','solids_fraction_pct','free_water_g','bound_water_proxy_g','oat_hydration_index_pct','residue_browning_index','residue_state'];const rows=[keys.join(','),...arr.map(o=>keys.map(k=>o[k]??'').join(','))];download('bakelab-timeseries.csv',rows.join('\n'),'text/csv');}
 function drawPlaceholderScene(){const svg=$('bake-scene'); if(!svg) return; svg.setAttribute('viewBox',window.matchMedia('(max-width:920px)').matches?'115 75 530 200':'0 0 760 300'); svg.replaceChildren(); svg.append(svgEl('rect',{x:0,y:0,width:760,height:300,fill:'#10181c'})); svg.append(svgEl('rect',{x:52,y:36,width:656,height:228,rx:18,fill:'rgba(18,27,31,.98)',stroke:'#34474d','stroke-width':2})); svgText(svg,{x:380,y:138,'text-anchor':'middle',class:'scene-label'},'Run a formula to render the bake viewport'); svgText(svg,{x:380,y:160,'text-anchor':'middle',class:'scene-subtle'},'The pan, loaf/batter shape, crust colour and warning behaviour update with the simulation.');}
 
 

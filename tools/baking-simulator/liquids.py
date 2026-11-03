@@ -33,6 +33,13 @@ def liquid_kind(recipe: dict) -> str:
     gelation/setting would invalidate a well-mixed liquid assumption.
     """
     c = recipe['fraction']
+    # Banana pulp and hydrated oats are heterogeneous suspensions, not elastic
+    # dough. Track a low-fidelity slurry -> paste -> residue transition instead
+    # of routing them into a bread-shaped, gas-leavened loaf.
+    botanical_g = recipe.get('banana_g', 0) + recipe.get('oats_g', 0)
+    if (botanical_g > 0 and c['water'] > 0.17 and
+            recipe['flour_g'] < 0.08 * recipe['total_g'] and c['protein'] < 0.14):
+        return 'suspension'
     if c['starch'] > 0.19 or c['protein'] > 0.14 or (recipe['flour_g'] > recipe['total_g'] * 0.13 and c['starch'] > 0.09):
         return 'solid'
     if c['water'] > 0.34 and (c['water'] + c['fat'] + c['sugar']) > 0.78:
@@ -78,6 +85,14 @@ def simulate_liquid(recipe: dict, cfg: dict, warnings: list[str], kind: str, ver
     milk_share = milk_g / max(total_g, 1e-10)
     milk_skin_history = 0.0
     syrup_colour_history = 0.0
+    residue_heat_history = 0.0  # arbitrary, dimensionless index; NOT reaction conversion
+    oat_hydration_history = 0.0
+    banana_g = float(recipe.get('banana_g', 0.0))
+    oats_g = float(recipe.get('oats_g', 0.0))
+    banana_solid_g = banana_g * 0.25  # approximation from ingredient catalogue
+    oat_solid_g = oats_g * 0.915
+    brownable_g = banana_solid_g + oat_solid_g + sugar_g + milk_g * 0.12
+    # Some sugar-rich bases are handled by the preexisting syrup proxy.
     steps = max(1, math.ceil(cfg['minutes']*60.0 / 3.0))
     dt = cfg['minutes']*60.0 / steps if cfg['minutes'] else 0.0
     interval = max(1, steps//115)
@@ -88,6 +103,27 @@ def simulate_liquid(recipe: dict, cfg: dict, warnings: list[str], kind: str, ver
         end_g = water_g+dry_g
         sg_frac = sugar_g/max(sugar_g+water_g, 1e-9) if (sugar_g+water_g)>0 else 0.0
         thick = clamp(100*max(0, sg_frac-.46)/.42,0,100) if sugar_g>0 else 0.
+        solids_fraction = dry_g/max(end_g,1e-9)
+        oat_hydration = (1 - math.exp(-oat_hydration_history/260)) if oats_g>0 else 0.
+        # Water bound in porridge/pulp is a phenomenological proxy. It remains
+        # part of total water mass; it is NOT newly created water.
+        bound_water = min(water_g, 2.3*oat_solid_g*oat_hydration + 0.8*banana_solid_g)
+        free_water = max(0., water_g-bound_water)
+        if end_g<1e-7:
+            state = 'empty'
+        elif kind=='oil' or (component_g['fat']/max(end_g,1e-9)>0.80 and water_g<0.1):
+            state = 'oil'
+        elif water_g/max(dry_g,1e-8)>3 and (oats_g+banana_g)>0:
+            state = 'slurry'
+        elif water_g/max(dry_g,1e-8)>3:
+            state = 'liquid'
+        elif water_g/max(dry_g,1e-8)>0.48:
+            state = 'paste' if (oats_g+banana_g)>0 else 'concentrate'
+        else:
+            state = 'scorched' if residue_heat_history>1.6 else 'dry residue'
+        # Thermal scorch index: cumulative dry-enough exposure, with no
+        # temperature-independent automatic browning. Not colourimetry.
+        residue_brown = 100*(1-math.exp(-residue_heat_history))
         # Kinetic 'skin' is an illustrative visualization of hot, largely
         # undisturbed dairy protein at an interface, not a measured film.
         film = clamp(100*(1-math.exp(-milk_skin_history/320)),0,100)
@@ -99,7 +135,7 @@ def simulate_liquid(recipe: dict, cfg: dict, warnings: list[str], kind: str, ver
         separation = (1-math.exp(-second/60 / (5+40*dairy_emulsion))) if is_two_phase else 0
         oil_depth = min(depth_mm, free_oil_g/0.91 / max(pan_area_cm2,1e-9)*10 * separation)
         water_loss_pct = 100*evap_g/total_g
-        brown = 100*(1-math.exp(-syrup_colour_history)) if sugar_g>0 else 0
+        brown = max(100*(1-math.exp(-syrup_colour_history)) if sugar_g>0 else 0., residue_brown)
         timeline.append({
             'minute':round(second/60,4), 'center_c':round(T,3), 'mid_c':round(T,3),
             'surface_c':round(T,3),'mass_loss_pct':round(water_loss_pct,4),
@@ -115,6 +151,10 @@ def simulate_liquid(recipe: dict, cfg: dict, warnings: list[str], kind: str, ver
             'syrup_thickening_index_pct':round(thick,2),
             'milk_skin_index_pct':round(film,2),
             'oil_layer_mm':round(oil_depth,3),
+            'residue_state':state,'solids_fraction_pct':round(100*solids_fraction,3),
+            'free_water_g':round(free_water,3),'bound_water_proxy_g':round(bound_water,3),
+            'oat_hydration_index_pct':round(100*oat_hydration,2),
+            'residue_browning_index':round(residue_brown,2),
             'separation_index_pct':round(100*separation,2),
             'co2_generated_g':0.,'co2_retained_g':0.,
         })
@@ -160,7 +200,7 @@ def simulate_liquid(recipe: dict, cfg: dict, warnings: list[str], kind: str, ver
         # point, while a fully dried residue may heat toward the oven setpoint.
         if water_g>1e-10:
             Tnew=min(Tnew,bp)
-        T=clamp(Tnew,-50,450)
+        T=clamp(Tnew,-50,600)
         # Milk-skin heuristic; requires milk and retained liquid.
         if milk_share>0 and water_g>0:
             milk_skin_history += dt * milk_share * _sigmoid((T-72)/6) * (0.65+0.35*min(1,evap_g/max(1,initial_water_g*0.05)))
@@ -168,11 +208,29 @@ def simulate_liquid(recipe: dict, cfg: dict, warnings: list[str], kind: str, ver
         if sugar_g>0 and water_g>0:
             conc=sugar_g/max(sugar_g+water_g,1e-9)
             syrup_colour_history += dt*0.000015*_sigmoid((T-116)/10)*_sigmoid((conc-0.77)/0.065)
+        # A conserved-mass dry-down proxy; starch/protein-bearing residues
+        # darken only after enough moisture has left. Not a full surface mesh.
+        if oats_g>0 and T>38 and water_g>0:
+            oat_hydration_history += dt * _sigmoid((T-61)/10)
+        if brownable_g>0:
+            moisture_ratio = water_g / max(dry_g, 1e-8)
+            dry_gate = _sigmoid((0.66-moisture_ratio)/0.18)
+            # Pure sugar also darkens at elevated temperature; oats and banana
+            # are favored over an equivalent mass of inert protein-free salt.
+            relevant = clamp((banana_solid_g*1.6 + oat_solid_g*.9 +
+                              sugar_g*.7 + milk_g*.09)/max(dry_g,1),0,2)
+            thermal_gate = _sigmoid((T-129)/11)
+            rate = 0.00055 * dry_gate * thermal_gate * relevant
+            residue_heat_history += dt*rate
         if (step+1)%interval == 0 or step==steps-1:
             record((step+1)*dt)
     warnings = list(warnings)
     warnings.append('Liquid branch: well-mixed open-pan energy balance; convection, pan contact, boiling elevation and vapor transport are approximations, not validated measurements.')
     warnings.append('Pan area is inferred from additive ingredient volumes and the initial-depth slider; ingredient dissolution, bubbles, foams, skin resistance and stir rate are not resolved.')
+    if banana_g>0 or oats_g>0:
+        warnings.append('Pulp/oat suspension: hydration, lump formation, paste setting, diffusion and browning rates are uncalibrated; only water mass and a lumped temperature are tracked physically.')
+    if residue_heat_history>0.3:
+        warnings.append('Residue browning/scorch is a moisture- and temperature-gated qualitative index, NOT a validated prediction of char, flavour, colour or smoke.')
     if free_oil_g>0 and initial_water_g>0:
         warnings.append('Oil/water separation is a qualitative time cue, not a predicted layer-formation rate; no emulsion or mixing history is specified.')
     if milk_g>0:
@@ -213,6 +271,12 @@ def simulate_liquid(recipe: dict, cfg: dict, warnings: list[str], kind: str, ver
             'syrup_thickening_index_pct':last['syrup_thickening_index_pct'],
             'milk_skin_index_pct':last['milk_skin_index_pct'],
             'oil_layer_mm':last['oil_layer_mm'],
+            'residue_state':last['residue_state'],
+            'solids_fraction_pct':last['solids_fraction_pct'],
+            'free_water_g':last['free_water_g'],
+            'bound_water_proxy_g':last['bound_water_proxy_g'],
+            'oat_hydration_index_pct':last['oat_hydration_index_pct'],
+            'residue_browning_index':last['residue_browning_index'],
         },
         'profile':{'position_pct':[0,20,40,60,80,100],
                    'temp_c':[round(T,3)]*6,

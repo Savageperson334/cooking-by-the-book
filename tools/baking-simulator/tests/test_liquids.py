@@ -139,7 +139,7 @@ class TestMobilePhysicsUI(unittest.TestCase):
         self.assertIn('id="scene-material-note"',html)
         self.assertIn('id="fluid-depth"',html)
         self.assertIn('value="oilwater"',html)
-        self.assertIn('BUILD 0.7',html)
+        self.assertIn('BUILD 0.8',html)
         worker=(ROOT/'worker.js').read_text()
         self.assertIn("fetch('./liquids.py')",worker)
         self.assertIn("'/home/pyodide/liquids.py'",worker)

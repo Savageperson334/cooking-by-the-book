@@ -11,7 +11,7 @@ import json
 import math
 from typing import Any
 
-VERSION = "0.7.0"
+VERSION = "0.8.0"
 from liquids import liquid_kind, simulate_liquid
 COMPONENTS = ("water", "protein", "fat", "starch", "sugar", "fiber", "ash")
 SIGMA = 5.670374419e-8  # W / (m² K⁴)
@@ -105,7 +105,8 @@ def composition_of(catalog: list[dict], amounts: dict[str, float]) -> dict[str, 
             "salt_g": amounts.get("salt", 0.0), "yeast_g": amounts.get("instant_yeast", 0.0),
             "baking_powder_g": amounts.get("baking_powder", 0.0),
             "baking_soda_g": amounts.get("baking_soda", 0.0), "cocoa_g": amounts.get("cocoa", 0.0),
-            "milk_g": amounts.get("milk", 0.0), "free_oil_g": amounts.get("olive_oil", 0.0)}
+            "milk_g": amounts.get("milk", 0.0), "free_oil_g": amounts.get("olive_oil", 0.0),
+            "banana_g": amounts.get("banana", 0.0), "oats_g": amounts.get("oats", 0.0)}
 
 
 
@@ -145,7 +146,7 @@ def fermentation_rate(recipe: dict, temperature: float) -> float:
     return 0.0045 * yeast * ferment_activity(temperature) * osmotic * saline * water_gate
 
 def validate_run(recipe: dict, settings: dict) -> tuple[dict, list[str]]:
-    limits = {"oven_c": (-20, 400), "minutes": (0, 300), "thickness_mm": (2, 250),
+    limits = {"oven_c": (-20, 600), "minutes": (0, 1440), "thickness_mm": (2, 250),
               "initial_c": (-20, 100), "steam_pct": (0, 100), "fan": (0, 1),
               "proof_minutes": (0, 720), "proof_c": (-10, 55)}
     cfg = {}
@@ -178,11 +179,11 @@ def validate_run(recipe: dict, settings: dict) -> tuple[dict, list[str]]:
     if cfg["oven_c"] < 0 or cfg["initial_c"] < 0:
         w.append("Sub-zero conditions: freezing, latent heat of fusion and frozen-water transport are not modeled.")
     if cfg["oven_c"] < 120 or cfg["oven_c"] > 300:
-        w.append("Oven temperature is outside conventional bread-baking calibration ranges.")
+        w.append("Oven temperature is outside conventional bread-baking calibration ranges; fire and material decomposition are not modeled.")
     if cfg["thickness_mm"] < 10 or cfg["thickness_mm"] > 140:
         w.append("Unusual thickness: effective 1D geometry and surface coefficients are uncertain.")
     if cfg["minutes"] > 120:
-        w.append("Long heating: charring, pyrolysis, fire and large structural deformation are NOT simulated.")
+        w.append("Long heating: dry-residue darkening is heuristic; char chemistry, fire and structural collapse are NOT simulated.")
     if cfg["proof_minutes"] > 0 and cfg["proof_c"] > 45:
         w.append("Proofing above 45°C: yeast activity and survival are uncertain; no kill-time history is modeled.")
     if recipe["baking_powder_g"] > 0:
@@ -258,6 +259,9 @@ def simulate(payload: dict) -> dict:
     dt_stable = 0.75 * dx * dx / max(alpha, 2e-8)
     dt = min(5.0, max(0.25, dt_stable))
     steps = max(1, math.ceil(total_s / dt))
+    if steps > 40000:
+        steps = 40000
+        warnings.append("Numerical time step was coarsened for a very long/thin scenario; check discretization sensitivity before interpreting results.")
     dt = total_s / steps if total_s else 0.0
     stride = max(1, steps // 100)
     timeline = []

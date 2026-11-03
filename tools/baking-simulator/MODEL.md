@@ -148,3 +148,21 @@ Those formulae imply **water alone can disappear**, **milk leaves a nonvolatile 
 - [Molecular Gastronomy: A New Emerging Scientific Discipline](https://pmc.ncbi.nlm.nih.gov/articles/PMC2855180/) (2010), syrup water content/boiling point/viscosity/glass transition. Our numerical syrup exponent and colouring cue are **not** derived as validated fits from that paper.
 
 **Safety:** Steam burns, concentrated syrup, and superheated oil can cause serious injury. This toy simulation does not tell you how long to heat foods safely or whether a pan of oil will smoke or ignite. The extremes are numerical stress cases, not recommended experiments.
+
+
+## v0.8: suspended plant solids and thermal darkening (research model, uncalibrated)
+
+In v0.7, high-water banana pulp and hydrated oats could enter a liquid branch but were depicted as liquid forever: the existing liquid browning state was primarily a sugar-syrup heuristic. v0.8 distinguishes a **suspension** when banana or oat mass contributes to a sufficiently water-rich, flour-light mixture. It keeps the v0.7 energy/mass calculation but tracks approximate nonvolatile dry ingredients (banana dry matter at 25%, oats at 91.5%, from the 20-ingredient catalogue) as water evaporates.
+
+An **unvalidated bulk-state label** is derived from residual water/dry-matter ratio: *slurry*, *paste*, *dry residue* or *scorched*. The amount of dry matter is not reduced by decomposition or gas loss. A new monotone **thermal browning index** is accumulated using a temperature gate (centred at 129°C), a dryness gate (centred near a water/dry ratio of 0.66) and a substrate weighting for banana, oats, sugar and milk. The exact thresholds and kinetic coefficient were chosen to demonstrate state transitions and should be calibrated against photographed runs or published controlled studies. **This is not a validated Maillard or caramelization kinetic equation.** It does not predict oil smoking, flaming, carbon mass losses or toxic gases. Drying residue may physically char in reality, but simulated mass remains constant after water is gone.
+
+For oats an additional heating-integral-based hydration index controls an estimated bound-water fraction; bound water remains part of total water and can still evaporate. The current solver assumes mixing and does not resolve swelling, suspended-particle sedimentation, surface crust formation, pan material or stirring.
+
+**Relevant primary and technical sources:**
+
+- Baini and Langrish (2009), *Assessment of colour development in dried bananas – measurements and implications for modelling*. [DOI 10.1016/j.jfoodeng.2009.01.012](https://doi.org/10.1016/j.jfoodeng.2009.01.012). Reports banana colour change during drying as a function of temperature and moisture; does **not** validate BakeLab's coefficients.
+- Chen et al. (2025), *Insights into the mechanisms and regulatory strategies for aroma profiles and browning phenomena in banana puree processing*. [DOI 10.1016/j.foodchem.2025.143783](https://doi.org/10.1016/j.foodchem.2025.143783). Banana puree browning is real and multiple pathways contribute.
+- Food and Agriculture Organization, [small- and medium-scale fruit-juice processing: Banana](https://www.fao.org/4/y2515e/y2515e17.htm). Processing browning and enzymatic inactivation context; not a thermal scorched-residue calibration.
+- Guerrero, Alzamora and Gerschenson (1997), *Flow behaviour of processed banana purée*. [DOI 10.1177/108201329700300205](https://doi.org/10.1177/108201329700300205). Demonstrates non-Newtonian pseudoplastic, thixotropic banana purée behaviour absent in the model.
+
+**Instruments needed to validate:** gravimetric evaporation curve, pan surface area, puree moisture content, pan vs sample thermocouples, calibrated photographs/spectrophotometer colour data, and if possible rheometry for banana/oats. Compare small changes in starting water and oven setpoint with repeated runs; do not infer precise browning times from this prototype.
