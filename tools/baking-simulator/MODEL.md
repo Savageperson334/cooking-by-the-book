@@ -105,3 +105,10 @@ The separate gas submodel **does not subtract vented CO₂ mass** from the displ
 ## Browser compatibility note
 
 Pyodide v314.0.7 requires **module** web workers rather than classic `importScripts()`. Version 0.2 uses an ES module import. JavaScript syntax and Python tests passed, but the full browser startup still requires an interactive network-enabled browser integration test.
+
+
+## 2.5D scene: scientific boundary (v0.4)
+
+The angled oven viewport draws from computed time-series temperature, water, rise and browning signals, *not* from a 3D heat/flow model. Geometry is a fixed-footprint pan analogy; steam wisps, bubbles, cracks, grain, collapse and shine are deterministic artistic representations informed by composition and the existing uncalibrated rise proxy. This is deliberately **qualitative**, especially for nearly pure liquid, oil, crystals, very dry powders and high-salt mixtures. The numerical prediction does not include oil–water phase separation, sugar glass transitions, protein gel strength or fracture mechanics. Preserve warnings and avoid interpreting this view as evidence of texture or food safety.
+
+References on physically grounded crust modelling: Purlis and Salvadori (2009), *Modelling the browning of bread during baking*, doi:10.1016/j.foodres.2009.03.007, and Chhanwal et al. (2014), temperature- and moisture-based modelling of starch gelatinization and crumb softness, doi:10.1111/jtxs.12097. The viewport is **not an implementation** of their published calibrated models.
