@@ -96,12 +96,28 @@ class TestDistinctCrackingModes(unittest.TestCase):
                         self.assertGreaterEqual(frame[field], 0)
                     self.assertLessEqual(frame["estimated_triglyceride_cracked_pct"], 100.01)
 
+    def test_independent_crossing_times_have_material_temperatures(self):
+        oil = run({"olive_oil":700}, 600, 90)["summary"]
+        self.assertIsNotNone(oil["estimated_cracking_1pct_crossing_min"])
+        self.assertIsNotNone(oil["estimated_cracking_1pct_material_c"])
+        self.assertGreater(oil["estimated_cracking_1pct_material_c"], 0)
+        self.assertLessEqual(oil["estimated_cracking_1pct_material_c"], 600.01)
+
+        bread = run({"bread_flour":500,"water":320,"salt":8}, 220, 70, 60)["summary"]
+        self.assertIn("physical_crack_proxy_20pct_crossing_min", bread)
+        self.assertIn("physical_crack_proxy_20pct_surface_c", bread)
+        if bread["physical_crack_proxy_20pct_crossing_min"] is not None:
+            self.assertIsNotNone(bread["physical_crack_proxy_20pct_surface_c"])
+            self.assertLessEqual(bread["physical_crack_proxy_20pct_surface_c"], 220.01)
+
     def test_ui_exposes_both_cracking_modes(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
         js = (ROOT / "app.js").read_text(encoding="utf-8")
         self.assertIn('value="fracture"', html)
         self.assertIn('value="chemcrack"', html)
         self.assertIn('id="thermal-chem"', html)
+        self.assertIn('id="thermal-chem-point"', html)
+        self.assertIn('id="thermal-fracture-point"', html)
         self.assertIn("'physical_crack_risk_pct'",js)
         self.assertIn("'estimated_triglyceride_cracked_pct'",js)
 
