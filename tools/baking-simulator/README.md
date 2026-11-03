@@ -1,10 +1,10 @@
 # BakeLab — experimental browser baking simulator
 
-**Running prototype v0.9** in the [Cooking by the Book](../../README.md) experiment toolkit.
+**Running prototype v0.9.1** in the [Cooking by the Book](../../README.md) experiment toolkit.
 
 [Open browser app](index.html) · [Scientific methods and limitations](MODEL.md) · [Python engine](engine.py) · [20-ingredient catalogue](ingredients.json)
 
-## Mobile-first workspace (v0.8)
+## Mobile-first workspace (v0.9)
 
 On a phone, four tabs—**Ingredients**, **Process**, **Results**, and **Compare**—sit above the **always-visible bake preview**. The preview remains pinned below the tab bar while you scroll long ingredient lists or process controls. Switching tabs does not reset the simulated scenario, playback, or A/B snapshots.
 
@@ -97,7 +97,7 @@ A fluid-only recipe now uses [`liquids.py`](liquids.py), a compact energy/evapor
 
 **Test coverage:** Python unit tests for water depletion, pan depth, heating, mass conservation, milk skin, oil separation, syrup concentration, tiny parameter differences and extreme inputs; plus browser-smoke tests against mocked solver responses across phone, tablet and desktop sizes. Browser startup against the real Pyodide CDN still needs live verification on GitHub Pages.
 
-## v0.8: water + banana / rolled oats, longer ranges, and °C/°F
+## v0.9: water + banana / rolled oats, longer ranges, and °C/°F
 
 **Two new demo presets:** *Banana + water → scorched solids* (500 g water + 250 g mashed banana) and *Rolled oats + water → toasted residue* (600 g water + 200 g oats). These deliberately switch the **Process** tab to a 260°C oven, 240-minute run and 15-mm starting depth to reveal drying/browning stages. Ordinary presets still retain your existing process settings. You can scrub the preview from the beginning to the end to inspect slurry → paste → residue; the pan height follows the computed remaining mass rather than being kept full.
 
@@ -116,20 +116,22 @@ The new **suspension branch** in [`liquids.py`](liquids.py) is a well-mixed heat
 
 For source literature and modelling gaps, see [MODEL.md](MODEL.md). Tests include extreme-duration/oven runs, pure water no-browning, banana and oat dry-down and small perturbations.
 
-## v0.9: inspect the upper temperature end
 
-The simulator now provides an **explicitly uncalibrated** high-temperature survival diagnostic. Rather than leaving every gram of solids in place forever after evaporation, it post-processes local temperature and moisture histories with composition-specific first-order surrogate rates for organic breakdown, volatile escape, transient char formation, and assumed ambient-air char oxidation. Mineral salts/ash remain as a separate conserved pool. As a qualitative check, a salt-dominant residue behaves differently from sugar, oats, banana and oil at 600°C. Crucially these surrogate rates are not a quantitative model of real pyrolysis, combustion or food safety.
+## v0.9: verify the upper end (thermal breakdown / cracking)
 
-New Results readouts and plots: estimated remaining total mass, intact organics, char, mineral/ash, thermal stage, and a **drying crack-risk index**. This index does not identify a true mechanical failure threshold; shrinkage stress, rheology and adhesion are still missing. The Process tab has an **Air access for char oxidation** control; it scales an illustrative oxidation rate only. It cannot predict ignition, smoke, fire or safe use in oxygen-limited conditions.
+At a 600 °C oven setting, **the original dry-solids balance was wrong if read as surviving food**: it kept all dry matter while only evaporating water. A separate, explicitly *uncalibrated* post-processing diagnostic now accumulates thermal exposure of sugar, starch, protein, fibre and fat using each frame's modeled material temperature and moisture. It partitions carbon-containing material into **remaining organics, devolatilized material, char, air-accessible char oxidation, and inorganic/mineral ash**. A **qualitative crack-risk index** responds to drying and thermal gradients but does **not** supply a single crack temperature or actual mechanical fracture prediction.
 
-The pre-existing heat/moisture mass-loss values remain **water-only baseline outputs**, because the thermal-breakdown diagnostic is not yet fed back into heat transfer, sample geometry or evaporation. Read the independent `estimated_*` values as a stress-test overlay. At extreme temperatures the breakdown curves may be directionally plausible but cannot be trusted quantitatively.
+Important: the original energy/water equations are unchanged. The revised output is a **screening estimate shown separately** from original `end_mass_g`, which still includes all dry matter. Browser charts, pan viewport, and exports expose the estimate so high-heat experiments don't appear to leave intact sugar, oil or banana forever.
 
-Further reading: [ASABE 2018, Thermal Decomposition of Carbohydrates, Lipids, and Proteins](https://doi.org/10.13031/trans.12494); [Rigaku, edible oil thermal decomposition](https://rigaku.com/products/thermal-analysis/sta/application-notes/b-ta1058-decomposition-behavior-edible-oils-effects-oxidative-degradation); [NIST, sodium chloride melting point](https://srd.nist.gov/NSRDS/NSRDS-NBS61-II.pdf); [banana drying and crack stress](https://doi.org/10.1080/07373937.2023.2280912).
+New process control: **Air access (relative)**, 0–100% in this model. This is a sensitivity proxy for char oxidation, **not oxygen percent, ventilation measurement or ignition probability**. 600 °C simulations must not be treated as food safety or fire guidance.
 
-## Two kinds of cracking — high-temperature screening (v0.9)
+Reference discussion: [thermal model](MODEL.md).
 
-**Physical fracture:** a normalized, *uncalibrated* drying-stress screening index combines surface/interior moisture mismatch, accumulated surface shrinkage, thermal gradients, gas expansion and composition-dependent cohesion. It records cumulative damage and an estimated **visible fissure** extent, then hides those fissures when little structure remains. Neither a true tensile-strength measurement nor a validated mechanical crack temperature; cooling/checking after baking is omitted.
 
-**Chemical cracking/decomposition:** integrates illustrative time/temperature dependent loss of sugar, starch, protein, fiber and **fat (triglycerides)** into volatile material and possible char. Accessible char can further diminish through an oxidation proxy. The Results panel shows fat conversion and the first point at which **10% of the initial fat** has converted, with the modeled food temperature at that point; these are **not universal cracking, flash or ignition points**. No flames, combustion heat release, smoke chemistry or oxygen transport is simulated. The original water-only energy solutions are unchanged. The chemistry mass accounting is post-processing; no reaction enthalpy feedback is claimed.
+## v0.9.1 — Two kinds of cracking, not one
 
-At 600°C, reported oven temperature is not food temperature. Temperatures for liquid water remain near boiling while water is present; the matrix may become hotter after drying. All results in this extreme regime are qualitative research stress-tests, not safety guidance.
+**Physical cracks / fissures:** `physical_fracture.py` estimates an **uncalibrated risk index**, driven by drying shrinkage, moisture/temperature differences, and the presence of a fractureable starch/protein/sugar/fibre structure. It is not a tensile-stress, fracture-toughness or crack-length solver. A model threshold crossing is *not a physical crack point*; real fracture depends on adhesion, thickness, strain rate, geometry, temperature, moisture and strength. Cracks are visually drawn only when the physical screening index is elevated.
+
+**Chemical thermal cracking:** `thermal_breakdown.py` estimates **fractional thermal cleavage of triglycerides**, particularly in oil-rich mixes. It competes with other oil degradation pathways and tracks a transient pool of lighter products, volatile loss and char. It is entirely separate from physical fractures or generic browning. Triglycerides are not pure hydrocarbons; their high-temperature breakdown can yield hydrocarbons **and** oxygenated compounds. No single molecular cracking temperature exists, and no individual molecule or exhaust gas composition is predicted.
+
+The Results tab exposes the two independent curves and gram-based readouts. All chemical coefficients and fracture indices are *illustrative*, not fitted against measurements. See [MODEL.md](MODEL.md) for cited evidence and the limitations of 600°C simulations. Neither subsystem predicts safe use of hot oil, ignition or real flames.

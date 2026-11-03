@@ -4,12 +4,14 @@ let pyodide;
 let model;
 const ready = (async () => {
   pyodide = await loadPyodide();
-  const [response, liquidResponse, upperResponse] = await Promise.all([fetch('./engine.py'), fetch('./liquids.py'),fetch('./thermal_breakdown.py')]);
+  const [response, liquidResponse, breakdownResponse, fractureResponse] = await Promise.all([fetch('./engine.py'), fetch('./liquids.py'), fetch('./thermal_breakdown.py'), fetch('./physical_fracture.py')]);
   if (!response.ok) throw Error('Cannot load engine.py');
   if (!liquidResponse.ok) throw Error('Cannot load liquids.py');
-  if (!upperResponse.ok) throw Error('Cannot load thermal_breakdown.py');
+  if (!breakdownResponse.ok) throw Error('Cannot load thermal_breakdown.py');
+  if (!fractureResponse.ok) throw Error('Cannot load physical_fracture.py');
   pyodide.FS.writeFile('/home/pyodide/liquids.py', await liquidResponse.text());
-  pyodide.FS.writeFile('/home/pyodide/thermal_breakdown.py', await upperResponse.text());
+  pyodide.FS.writeFile('/home/pyodide/thermal_breakdown.py', await breakdownResponse.text());
+  pyodide.FS.writeFile('/home/pyodide/physical_fracture.py', await fractureResponse.text());
   pyodide.FS.writeFile('/home/pyodide/engine.py', await response.text());
   pyodide.runPython('import sys;sys.path.insert(0,"/home/pyodide");import engine');
   model = pyodide.globals.get('engine').simulate_json;

@@ -133,8 +133,4 @@
 
 .scene-material-note{padding-left:9px!important;border-radius:4px}
 
-.thermal-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:14px 0}.thermal-grid>div{background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:11px 12px}.thermal-grid span{display:block;color:var(--muted);font-size:.7rem;margin-bottom:5px}.thermal-grid strong{font-size:1rem;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.thermo-card p{margin:10px 0;line-height:1.55}@media(max-width:390px){.thermal-grid strong{font-size:.9rem}}
-
-/* Two distinct failure modes: fracture geometry vs chemical conversion. */
-.thermo-card .thermal-grid>div:has(#fracture-damage),.thermo-card .thermal-grid>div:has(#fracture-stress){border-left:2px solid #e8bf78}
-.thermo-card .thermal-grid>div:has(#chem-conversion),.thermo-card .thermal-grid>div:has(#fat-conversion),.thermo-card .thermal-grid>div:has(#fat-onset){border-left:2px solid #b0abc9}
+.thermal-summary{border-color:#75664b;background:#201f1b}.thermal-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}.thermal-grid>div{border:1px solid #4b493e;padding:9px 10px;border-radius:8px;min-width:0}.thermal-grid span{display:block;color:#b4aa92;font-size:.67rem}.thermal-grid strong{display:block;margin-top:5px;color:#f1e6d0;font-size:clamp(.84rem,2vw,1.12rem);overflow-wrap:anywhere}.thermal-summary p{margin-top:12px}.thermal-summary[hidden]{display:none}

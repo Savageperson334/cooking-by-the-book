@@ -11,9 +11,10 @@ import json
 import math
 from typing import Any
 
-VERSION = "0.9.0"
+VERSION = "0.9.1"
 from liquids import liquid_kind, simulate_liquid
 from thermal_breakdown import annotate_high_heat
+from physical_fracture import annotate_fracture
 COMPONENTS = ("water", "protein", "fat", "starch", "sugar", "fiber", "ash")
 SIGMA = 5.670374419e-8  # W / (m² K⁴)
 LV = 2.26e6  # J / kg, reference latent heat of water
@@ -149,14 +150,12 @@ def fermentation_rate(recipe: dict, temperature: float) -> float:
 def validate_run(recipe: dict, settings: dict) -> tuple[dict, list[str]]:
     limits = {"oven_c": (-20, 600), "minutes": (0, 1440), "thickness_mm": (2, 250),
               "initial_c": (-20, 100), "steam_pct": (0, 100), "fan": (0, 1),
-              "proof_minutes": (0, 720), "proof_c": (-10, 55),
-              "air_access_pct": (0,100)}
+              "proof_minutes": (0, 720), "proof_c": (-10, 55), "air_access_pct": (0,100)}
     cfg = {}
     for key, (lo, hi) in limits.items():
         val = float(settings.get(key, {"oven_c": 220, "minutes": 35, "thickness_mm": 80,
                                        "initial_c": 22, "steam_pct": 5, "fan": 0,
-                                       "proof_minutes": 0, "proof_c": 25,
-                                       "air_access_pct": 100}[key]))
+                                       "proof_minutes": 0, "proof_c": 25, "air_access_pct":100}[key]))
         if not math.isfinite(val) or not lo <= val <= hi:
             raise ValueError(f"{key}: expected a finite value in [{lo}, {hi}]")
         cfg[key] = val
@@ -205,7 +204,7 @@ def simulate(payload: dict) -> dict:
     cfg, warnings = validate_run(recipe, payload.get("settings", {}))
     kind = liquid_kind(recipe)
     if kind != "solid":
-        return annotate_high_heat(simulate_liquid(recipe, cfg, warnings, kind, VERSION), recipe)
+        return annotate_fracture(annotate_high_heat(simulate_liquid(recipe, cfg, warnings, kind, VERSION),recipe),recipe)
     frac = recipe["fraction"]
     mass_kg = recipe["total_g"] / 1000.0
     n = int(bounded(round(cfg["thickness_mm"] / 3.5), 4, 26))
@@ -427,7 +426,7 @@ def simulate(payload: dict) -> dict:
     if cfg["oven_c"] > 280:
         warnings.append("At very high temperatures, pyrolysis, fire hazards and chemical decomposition are outside this model.")
     warnings.append("Screening model: 1D slab, fixed geometry, simplified evaporation and reaction indices. Not validated for food safety or exact doneness.")
-    return annotate_high_heat({
+    return annotate_fracture(annotate_high_heat({
         "version": VERSION, "settings": cfg,
         "summary": {"total_g": round(recipe["total_g"], 3),
                     "water_pct": round(frac["water"]*100, 3),
@@ -462,7 +461,7 @@ def simulate(payload: dict) -> dict:
         "metadata": {"grid_cells": n, "steps": steps, "dt_s": round(dt,5),
                      "method": "1D implicit finite-volume heat + explicit moisture, gas-index thickness coupling (experimental)",
                      "reference": "Choi–Okos thermal properties; Purlis/Salvadori heat/moisture modelling"}
-    }, recipe)
+    },recipe),recipe)
 
 
 def simulate_json(json_text: str) -> str:
