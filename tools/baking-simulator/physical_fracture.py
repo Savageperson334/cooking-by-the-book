@@ -35,6 +35,7 @@ def annotate_fracture(result:dict,recipe:dict)->dict:
     cumulative_shrink=0.
     cumulative_thermal=0.
     crossing=None
+    crossing_surface_c=None
     for frame in frames:
         minute=frame['minute']
         dt=max(0.,(minute-prev_min)*60) if prev_min is not None else 0.
@@ -61,7 +62,9 @@ def annotate_fracture(result:dict,recipe:dict)->dict:
         # visible fissures cease to be meaningful when little structure remains.
         screening_stress_ratio=max(0.0,cumulative_shrink+cumulative_thermal)
         strain_proxy_pct=100*0.03*screening_stress_ratio
-        if crossing is None and physical_index>=20: crossing=minute
+        if crossing is None and physical_index>=20:
+            crossing=minute
+            crossing_surface_c=frame['surface_c']  # uncalibrated index threshold, not failure temperature
         frame.update({
             'physical_crack_risk_pct':round(physical_index,3),
             'visible_fracture_pct':round(physical_index,3),
@@ -81,7 +84,9 @@ def annotate_fracture(result:dict,recipe:dict)->dict:
                 'fracture_stress_ratio_proxy','fracture_strain_proxy_pct','physical_shrinkage_drive',
                 'physical_gradient_drive','physical_moisture_contrast_pct','crack_risk_index_pct'):
         result['summary'][key]=end[key]
-    result['summary']['physical_crack_proxy_50pct_crossing_min']=None if crossing is None else round(crossing,2)
+    result['summary']['physical_crack_proxy_20pct_crossing_min']=None if crossing is None else round(crossing,2)
+    result['summary']['physical_crack_proxy_20pct_surface_c']=None if crossing_surface_c is None else round(crossing_surface_c,2)
+    result['summary']['physical_crack_proxy_50pct_crossing_min']=None if crossing is None else round(crossing,2)  # legacy alias, avoid for display
     result['summary']['crack_risk_onset_min']=result['summary']['physical_crack_proxy_50pct_crossing_min']
     if max(f['physical_crack_risk_pct'] for f in frames)>5:
         result['warnings'].append(
