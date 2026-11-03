@@ -74,6 +74,15 @@ class TestSolver(unittest.TestCase):
         self.assertTrue(math.isfinite(r['summary']['center_c']))
         self.assertTrue(0 <= r['summary']['mass_loss_pct'] <= 100)
 
+    def test_extreme_nearly_pure_oil_and_syrup_are_finite(self):
+        for recipe in ({'olive_oil':1000}, {'water':1000}, {'sugar':1000,'water':220}):
+            with self.subTest(recipe=recipe):
+                r=run(recipe,oven_c=400,minutes=100,thickness_mm=2)
+                s=r['summary']
+                self.assertTrue(all(math.isfinite(float(s[k])) for k in ('center_c','surface_c','mass_loss_pct','rise_pct')))
+                self.assertLessEqual(s['mass_loss_pct'],100)
+                self.assertGreaterEqual(s['end_mass_g'],0)
+
     def test_zero_time(self):
         r=run(minutes=0,initial_c=29)
         self.assertAlmostEqual(r['summary']['center_c'],29)
