@@ -12,15 +12,15 @@ class TestUIContract(unittest.TestCase):
         self.assertNotIn('importScripts(', js)
         # A failed CDN download must surface a readable message, not a generic worker error.
         self.assertIn('Could not download the Python runtime', js)
-        self.assertIn("new Worker('./worker.js?ui=0.13.0',{type:'module'})", app)
+        self.assertIn("new Worker('./worker.js?ui=0.13.1',{type:'module'})", app)
 
     def test_ui_release_uses_versioned_assets(self):
         html = (HERE / 'index.html').read_text()
         app = (HERE / 'app.js').read_text()
-        self.assertIn('BUILD 0.13.0', html)
-        self.assertIn('./app.js?ui=0.13.0', html)
-        self.assertIn('./style.css?ui=0.13.0', html)
-        self.assertIn('./worker.js?ui=0.13.0', app)
+        self.assertIn('BUILD 0.13.1', html)
+        self.assertIn('./app.js?ui=0.13.1', html)
+        self.assertIn('./style.css?ui=0.13.1', html)
+        self.assertIn('./worker.js?ui=0.13.1', app)
         # SVG labels must not be reintroduced: show metrics below the pan.
         self.assertNotIn('ANGLED PAN · ILLUSTRATIVE', app)
         for identifier in ('scene-oven', 'scene-thickness',
@@ -69,6 +69,11 @@ class TestUIContract(unittest.TestCase):
         self.assertIn("summary(", app.replace("createElement('summary',{text:'Weird physics'})", 'summary('))
         self.assertIn('summary.headline_warning', app)
         self.assertNotIn('id="milestones"', html)  # replaced by the one-line verdict
+
+    def test_presets_reset_the_bake_and_page_starts_on_lean_bread(self):
+        app = (HERE / 'app.js').read_text()
+        self.assertIn("settings={...defaults,...(presetProcess[id]||{})};", app)
+        self.assertIn("renderIngredients();loadPreset('bread');", app)
 
     def test_worker_skips_superseded_runs(self):
         js = (HERE / 'worker.js').read_text()
