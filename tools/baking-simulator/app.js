@@ -164,6 +164,8 @@ function visualDescriptor(frame){
 }
 function drawBakeScene(frame){
   const svg=$('bake-scene'); if(!svg || !last) return; svg.replaceChildren();
+  const compactScene=window.matchMedia('(max-width:920px)').matches;
+  svg.setAttribute('viewBox',compactScene?'115 75 530 200':'0 0 760 300');
   const d=visualDescriptor(frame), s=last.result.summary, t=last.result.timeline.at(-1).minute || 1;
   $('scene-state').textContent=d.label; $('scene-caption').textContent=d.note;
   const w=760,h=300, panL=154, panR=568, panTop=170, panDepth=48, panHeight=78;
@@ -282,12 +284,14 @@ function drawBakeScene(frame){
       svg.append(svgEl('ellipse',{cx:bx,cy:by,rx:5+i%3,ry:2.5,fill:'rgba(255,255,255,.25)'}));
     }
   }
+  if(!compactScene){
   svgText(svg,{x:97,y:84,class:'scene-label'},'ANGLED PAN · ILLUSTRATIVE');
   svgText(svg,{x:97,y:101,class:'scene-subtle'},`t = ${fmt(frame.minute,1)} min · oven ${fmt(last.result.settings.oven_c,0)} °C`);
   svgText(svg,{x:97,y:118,class:'scene-subtle'},`effective thickness ${fmt(frame.thickness_mm_est,1)} mm · rise ${fmt(frame.rise_pct,1)}%`);
   if(last.result.warnings.length){
     svgText(svg,{x:540,y:84,class:'scene-warning','text-anchor':'start'},'⚠ model boundary');
     svgText(svg,{x:540,y:101,class:'scene-subtle'},last.result.warnings[0].slice(0,42));
+  }
   }
 }
 function drawChart(){
@@ -368,12 +372,48 @@ function renderComparison(){const a=snapshots.A,b=snapshots.B;if(!a&&!b){$('comp
 }
 function download(name,text,contentType){const blob=new Blob([text],{type:contentType});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 function exportCSV(){if(!last)return;const arr=last.result.timeline;const keys=['minute','center_c','mid_c','surface_c','mass_loss_pct','center_moisture_pct','surface_moisture_pct','starch_progress_pct','protein_progress_pct','browning_index','rise_pct','thickness_mm_est','co2_generated_g','co2_retained_g'];const rows=[keys.join(','),...arr.map(o=>keys.map(k=>o[k]).join(','))];download('bakelab-timeseries.csv',rows.join('\n'),'text/csv');}
-function drawPlaceholderScene(){const svg=$('bake-scene'); if(!svg) return; svg.replaceChildren(); svg.append(svgEl('rect',{x:0,y:0,width:760,height:300,fill:'#10181c'})); svg.append(svgEl('rect',{x:52,y:36,width:656,height:228,rx:18,fill:'rgba(18,27,31,.98)',stroke:'#34474d','stroke-width':2})); svgText(svg,{x:380,y:138,'text-anchor':'middle',class:'scene-label'},'Run a formula to render the bake viewport'); svgText(svg,{x:380,y:160,'text-anchor':'middle',class:'scene-subtle'},'The pan, loaf/batter shape, crust colour and warning behaviour update with the simulation.');}
+function drawPlaceholderScene(){const svg=$('bake-scene'); if(!svg) return; svg.setAttribute('viewBox',window.matchMedia('(max-width:920px)').matches?'115 75 530 200':'0 0 760 300'); svg.replaceChildren(); svg.append(svgEl('rect',{x:0,y:0,width:760,height:300,fill:'#10181c'})); svg.append(svgEl('rect',{x:52,y:36,width:656,height:228,rx:18,fill:'rgba(18,27,31,.98)',stroke:'#34474d','stroke-width':2})); svgText(svg,{x:380,y:138,'text-anchor':'middle',class:'scene-label'},'Run a formula to render the bake viewport'); svgText(svg,{x:380,y:160,'text-anchor':'middle',class:'scene-subtle'},'The pan, loaf/batter shape, crust colour and warning behaviour update with the simulation.');}
+
+
+// The bake scene lives outside the tabpanels and is never torn down or hidden.
+function setupTabs(){
+ const tabs=Array.from(document.querySelectorAll('[role="tab"][data-tab]'));
+ const shell=document.querySelector('.lab-shell');
+ function activate(id,focus=false){
+   if(!tabs.some(tab=>tab.dataset.tab===id))return;
+   for(const tab of tabs){
+     const on=tab.dataset.tab===id;
+     tab.setAttribute('aria-selected',String(on));
+     tab.tabIndex=on?0:-1;
+     const panel=$('panel-'+tab.dataset.tab);
+     panel.hidden=!on;
+     if(on&&focus)tab.focus({preventScroll:true});
+   }
+   // Switching from a long ingredients list to a short results panel should
+   // reveal the top of the new panel, not leave the user below its content.
+   const top=shell.getBoundingClientRect().top+window.scrollY;
+   if(window.scrollY>top+8)window.scrollTo({top,behavior:'instant'});
+ }
+ tabs.forEach((tab,index)=>{
+   tab.addEventListener('click',()=>activate(tab.dataset.tab));
+   tab.addEventListener('keydown',event=>{
+     let next=index;
+     if(event.key==='ArrowRight')next=(index+1)%tabs.length;
+     else if(event.key==='ArrowLeft')next=(index+tabs.length-1)%tabs.length;
+     else if(event.key==='Home')next=0;
+     else if(event.key==='End')next=tabs.length-1;
+     else return;
+     event.preventDefault();activate(tabs[next].dataset.tab,true);
+   });
+ });
+ activate('ingredients');
+}
 
 async function init(){
  try {catalog=await fetch('./ingredients.json').then(r=>{if(!r.ok)throw Error('Cannot load ingredients.json');return r.json();});} catch(e){showError('Could not load ingredients. Serve with python -m http.server or GitHub Pages. '+e.message);return;}
  for(const item of catalog)amounts[item.id]=item.amount;
- renderIngredients();renderSettings();updateMass();drawPlaceholderScene();
+ setupTabs();renderIngredients();renderSettings();updateMass();drawPlaceholderScene();
+ window.addEventListener('resize',()=>{if(last)updateScrub(playValue);else drawPlaceholderScene();});
  $('preset').addEventListener('change',e=>loadPreset(e.target.value));
  $('reset').addEventListener('click',()=>{settings={...defaults};$('process-controls').replaceChildren();renderSettings();$('preset').value='bread';loadPreset('bread');});
  $('run').addEventListener('click',()=>queueRun(0));
