@@ -134,3 +134,21 @@
 .scene-material-note{padding-left:9px!important;border-radius:4px}
 
 .thermal-summary{border-color:#75664b;background:#201f1b}.thermal-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}.thermal-grid>div{border:1px solid #4b493e;padding:9px 10px;border-radius:8px;min-width:0}.thermal-grid span{display:block;color:#b4aa92;font-size:.67rem}.thermal-grid strong{display:block;margin-top:5px;color:#f1e6d0;font-size:clamp(.84rem,2vw,1.12rem);overflow-wrap:anywhere}.thermal-summary p{margin-top:12px}.thermal-summary[hidden]{display:none}
+
+/* Pan metadata stays outside the SVG so text cannot cover the baked material. */
+.scene-readouts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:7px 0 2px}
+.scene-readouts>span{min-width:0;display:flex;flex-wrap:wrap;align-items:baseline;gap:3px 6px;padding:8px 9px;border:1px solid var(--line);background:#101d21;border-radius:7px;color:var(--muted);font-size:.67rem;line-height:1.3}
+.scene-readouts strong{color:var(--text);font-size:.75rem;font-weight:700;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.scene-warning-details{margin:5px 1px 2px;font-size:.7rem}
+.scene-warning-details summary{color:var(--warn);cursor:pointer;font-weight:650;line-height:1.4}
+.scene-warning-details p{margin:6px 0 0;padding:8px 10px;background:#251c19;border-left:2px solid var(--warn);border-radius:4px;color:#e1c7b3;overflow-wrap:anywhere;line-height:1.5}
+@media(max-width:920px){
+ .scene-readouts{gap:4px;margin-top:3px}
+ .scene-readouts>span{padding:4px 6px;font-size:.61rem}
+ .scene-readouts strong{font-size:.66rem}
+ .scene-warning-details{font-size:.62rem;margin-top:2px}
+}
+@media(max-width:530px){
+ .scene-readouts{grid-template-columns:1.55fr 1fr}
+ .scene-readout-thickness{display:none!important}
+}

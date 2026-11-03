@@ -87,6 +87,10 @@ The project should remain a general *food experiments* toolkit, not define the s
 
 **Interpretation:** These are directional/diagnostic model outputs for hypotheses. Rise percentages are not validated predictions of real loaf size. CO₂ venting is excluded from the water-only mass-loss balance, and a chemical-leavening proxy omits detailed acid chemistry. A truly physical baking model will need measured viscoelasticity, bubble transport, and calibration.
 
+## v0.9.2 interface fix — unobstructed bake viewport
+
+Simulation labels and the model warning no longer obscure the SVG food/pan. Oven temperature (°C/°F), effective thickness (mm) and rise proxy (%) appear in a compact readout row below the artwork; the warning is an expandable detail. On narrow phones the thickness badge is omitted from the pinned preview for space. This is a presentation-only correction; the calculated physics has not changed.
+
 ## Bake viewport v0.4
 
 The oven/pan scene is an SVG **2.5D angled illustration** whose state is recomputed from the Python time series. Use **Replay bake**, **Pause**, 0.5–4× playback, the scene timeline, or the temperature cross-section timeline; both are synchronized. This is not a rendered 3D physics simulation.

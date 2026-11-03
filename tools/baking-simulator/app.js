@@ -332,6 +332,14 @@ function drawBakeScene(frame){
   svg.setAttribute('viewBox',compactScene?'115 75 530 200':'0 0 760 300');
   const d=visualDescriptor(frame), s=last.result.summary, t=last.result.timeline.at(-1).minute || 1;
   $('scene-state').textContent=d.label; $('scene-caption').textContent=d.note;
+  // Simulation diagnostics belong beside the pan, not painted over the food.
+  $('scene-oven').textContent=bothTemps(last.result.settings.oven_c);
+  $('scene-thickness').textContent=fmt(frame.thickness_mm_est,1)+' mm';
+  $('scene-rise').textContent=fmt(frame.rise_pct,1)+'%';
+  const boundary=$('scene-warning-details'), problems=last.result.warnings||[];
+  boundary.hidden=!problems.length;
+  $('scene-warning-text').textContent=problems[0]||'';
+
   const w=760,h=300, panL=154, panR=568, panTop=170, panDepth=48, panHeight=78;
   // Deliberately non-physical shading for the 2.5D projection. The underlying
   // kinetics remain in Python; these gradients are not synthetic solver fields.
@@ -509,15 +517,7 @@ function drawBakeScene(frame){
       svg.append(svgEl('ellipse',{cx:bx,cy:by,rx:5+i%3,ry:2.5,fill:'rgba(255,255,255,.25)'}));
     }
   }
-  if(!compactScene){
-  svgText(svg,{x:97,y:84,class:'scene-label'},'ANGLED PAN · ILLUSTRATIVE');
-  svgText(svg,{x:97,y:101,class:'scene-subtle'},`t = ${fmt(frame.minute,1)} min · oven ${bothTemps(last.result.settings.oven_c)}`);
-  svgText(svg,{x:97,y:118,class:'scene-subtle'},`effective thickness ${fmt(frame.thickness_mm_est,1)} mm · rise ${fmt(frame.rise_pct,1)}%`);
-  if(last.result.warnings.length){
-    svgText(svg,{x:540,y:84,class:'scene-warning','text-anchor':'start'},'⚠ model boundary');
-    svgText(svg,{x:540,y:101,class:'scene-subtle'},last.result.warnings[0].slice(0,42));
-  }
-  }
+  // The artwork remains unobstructed; metrics and warnings render in HTML below it.
 }
 function drawChart(){
  const svg=$('chart');svg.replaceChildren();if(!last)return;

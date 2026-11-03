@@ -39,6 +39,21 @@ class TestUIContract(unittest.TestCase):
             self.assertIn(item, js)
         self.assertIn('requestAnimationFrame(stepPlayback)', js)
 
+    def test_bake_readouts_do_not_overlap_svg_scene(self):
+        html = (HERE / 'index.html').read_text()
+        js = (HERE / 'app.js').read_text()
+        css = (HERE / 'style.css').read_text()
+        for identifier in ('scene-oven', 'scene-thickness', 'scene-rise',
+                           'scene-warning-details', 'scene-warning-text'):
+            self.assertIn(f'id="{identifier}"', html)
+            self.assertIn("'" + identifier + "'", js)
+        pan_end = html.index('</svg></div>', html.index('id="bake-scene"'))
+        readouts = html.index('class="scene-readouts"')
+        self.assertGreater(readouts, pan_end)
+        self.assertNotIn("'ANGLED PAN · ILLUSTRATIVE'", js)
+        self.assertNotIn("'⚠ model boundary'", js)
+        self.assertIn('.scene-readouts', css)
+
     def test_svg_text_helper_avoids_invalid_append_return(self):
         js=(HERE/'app.js').read_text()
         self.assertNotIn(')).textContent=', js)
