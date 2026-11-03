@@ -78,7 +78,7 @@ let catalog=[],amounts={},settings={...defaults},engineReady=false,last=null,req
 let snapshots={A:null,B:null};
 let playing=false,playHandle=0,playStart=0,playOrigin=0,playValue=100;
 const BAKE_PLAY_DURATION=16000; // milliseconds for 0..100 at 1x
-const worker = new Worker('./worker.js?ui=0.13.0',{type:'module'});
+const worker = new Worker('./worker.js?ui=0.13.1',{type:'module'});
 worker.onmessage = ({data}) => {
   if(data.type==='ready') {
     engineReady=true;$('engine-dot').classList.add('ready');$('engine-status').textContent='Python model ready';$('run').disabled=false;
@@ -115,13 +115,14 @@ const presetProcess={
 function loadPreset(id){
  const initial=presets[id]||presets.bread;
  for(const item of catalog){amounts[item.id]=Number(initial[item.id]||0);}
- // Demo presets provide controlled thin-pan conditions; other presets keep
- // whatever temperature and duration the user last selected.
+ // Every preset starts from the default bake and then applies its own, so a
+ // 600 °C brick never leaks into the next pick.
+ settings={...defaults,...(presetProcess[id]||{})};
+ // Demo presets provide controlled thin-pan conditions.
  if(id==='bananadry'||id==='oatporridge'){
    settings={...settings,oven_c:260,minutes:240,thickness_mm:15,initial_c:22};
-   $('process-controls').replaceChildren();renderSettings();
  }
- if(presetProcess[id]){settings={...settings,...presetProcess[id]};$('process-controls').replaceChildren();renderSettings();}
+ $('process-controls').replaceChildren();renderSettings();
  updateControls();queueRun();
 }
 function updateControls(){for(const item of catalog){const row=document.querySelector(`[data-ingredient="${item.id}"]`);if(!row)continue;row.querySelector('input[type=number]').value=amounts[item.id];row.querySelector('input[type=range]').value=Math.min(amounts[item.id],Number(item.max));}updateMass();}
@@ -855,10 +856,10 @@ function setupTabs(){
 async function init(){
  try {catalog=await fetch(`./ingredients.json?ui=${new URL(import.meta.url).searchParams.get('ui')||''}`).then(r=>{if(!r.ok)throw Error('Cannot load ingredients.json');return r.json();});} catch(e){showError('Could not load ingredients. Serve with python -m http.server or GitHub Pages. '+e.message);return;}
  for(const item of catalog)amounts[item.id]=item.amount;
- setupTabs();renderIngredients();renderSettings();updateMass();drawPlaceholderScene();
+ setupTabs();renderIngredients();loadPreset('bread');drawPlaceholderScene();
  window.addEventListener('resize',()=>{if(last)updateScrub(playValue);else drawPlaceholderScene();});
  $('preset').addEventListener('change',e=>loadPreset(e.target.value));
- $('reset').addEventListener('click',()=>{settings={...defaults};$('process-controls').replaceChildren();renderSettings();$('preset').value='bread';loadPreset('bread');});
+ $('reset').addEventListener('click',()=>{$('preset').value='bread';loadPreset('bread');});
  $('run').addEventListener('click',()=>queueRun(0));
  $('metric').addEventListener('change',drawChart);
  $('scrub').addEventListener('input',e=>{setPlaying(false);updateScrub(Number(e.target.value));});
