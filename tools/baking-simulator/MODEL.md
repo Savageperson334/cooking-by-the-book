@@ -1,11 +1,13 @@
-# BakeLab 0.2 — Model specification and evidence
+# BakeLab 0.9.2 — Model specification and evidence
+
+*Sections below are labelled by the version that introduced them; the core heat/moisture description originated in v0.2.*
 
 **Status:** Working numerical prototype. Physics-inspired *screening model*, not a validated food-quality or food-safety prediction system.
 
 ## Scope
 
 - **20 controllable ingredients**, with an approximate water/protein/fat/starch/sugar/fibre/mineral composition table (`ingredients.json`). Ingredient fractions are approximate class-level starting points, **not verified batch-specific USDA measurements**. Real flours, eggs, honey etc. vary.
-- **Adjustable:** oven setpoint −20–400 °C, heating time 0–300 minutes, 1D slab thickness 2–250 mm, starting temperature −20–100 °C, normalized oven water-vapour level 0–100%, still/forced air, ingredient amounts 0–100,000 g (large extremes outside confidence domain).
+- **Adjustable:** oven setpoint −20–600 °C, heating time 0–1440 minutes, proof 0–720 min at −10–55 °C, relative air access 0–100%, 1D slab thickness 2–250 mm, starting temperature −20–100 °C, normalized oven water-vapour level 0–100%, still/forced air, ingredient amounts 0–100,000 g (large extremes outside confidence domain).
 - **Time series:** surface, mid-depth and centre temperature; modelled gas generation, retention and effective slab expansion; bulk mass lost to evaporation; center/surface water fractions; proxy indices for starch gelatinization, protein setting and surface browning.
 - **Spatial profiles:** time-resolved temperature and water fraction in an implicit finite-volume half-slab model; centre is insulated by symmetry, outside receives radiation + convection.
 - **Composition:** mass-weighted heat capacity and component volume-weighted conductivity estimates based on Choi–Okos property equations as summarized in ASHRAE. Water heat capacity uses a constant approximation; calculations clamp component-property temperature to 0–180 °C, explicitly extrapolated otherwise.
@@ -22,9 +24,11 @@ For each cell of thickness Δx, with mass/area mᵢ and specific heat cᵢ:
 − (surface-only) L_v · (evaporated mass/area)/Δt
 ```
 
+After each heat step, any cell that still holds liquid water and is above 100 °C has that excess sensible heat converted into evaporation (`m_boil = min(m_water, (T − 100 °C)·C_cell/L_v)`), with the vapour vented. This keeps wet crumb at or below boiling, as in real bread, and lets an internal drying front form behind the crust.
+
 Interface conductance `G = harmonic_mean(k_left, k_right)/Δx`. Radiation is linearized using `ε σ (T_o²+T_s²)(T_o+T_s)` and added to an adjustable forced-air / still-air convection coefficient. The implicit tridiagonal system is solved by Thomas elimination, avoiding explicit boundary instability at thin thicknesses.
 
-**Important limits:** no internal steam-driven convective transport, the *only* geometry change is effective thickness from a pan-constrained gas proxy (not actual free-loaf deformation), no oven preheating model, no thermal contraction/expansion, no vapor condensation within pores, no moisture-dependent spatial deformation, no actual sphere/cylinder geometry. Batch *mass* scales the output quantity and implied surface area at a fixed thickness; it does not by itself alter the 1D heat trajectory. A loaf's real shape, uncovered surfaces and pan contact matter greatly.
+**Important limits:** no internal steam-driven convective transport or inward vapour condensation (so centre heating is under-predicted relative to real loaves), the *only* geometry change is effective thickness from a pan-constrained gas proxy (not actual free-loaf deformation), no oven preheating model, no thermal contraction/expansion, no vapor condensation within pores, no moisture-dependent spatial deformation, no actual sphere/cylinder geometry. Batch *mass* scales the output quantity and implied surface area at a fixed thickness; it does not by itself alter the 1D heat trajectory. A loaf's real shape, uncovered surfaces and pan contact matter greatly.
 
 ## Moisture model
 
@@ -104,7 +108,7 @@ The separate gas submodel **does not subtract vented CO₂ mass** from the displ
 
 ## Browser compatibility note
 
-Pyodide v314.0.7 requires **module** web workers rather than classic `importScripts()`. Version 0.2 uses an ES module import. JavaScript syntax and Python tests passed, but the full browser startup still requires an interactive network-enabled browser integration test.
+Pyodide v314.0.7 requires **module** web workers rather than classic `importScripts()`. Version 0.2 uses an ES module import. The runtime is loaded with a dynamic `import()` so that a failed CDN download is reported with a readable message. JavaScript syntax and Python tests pass, but the full browser startup still requires an interactive network-enabled browser integration test.
 
 
 ## 2.5D scene: scientific boundary (v0.4)
