@@ -1,4 +1,4 @@
-# BakeLab 0.9.2 — Model specification and evidence
+# BakeLab 0.12.0 — Model specification and evidence
 
 *Sections below are labelled by the version that introduced them; the core heat/moisture description originated in v0.2.*
 
@@ -28,7 +28,57 @@ After each heat step, any cell that still holds liquid water and is above 100 °
 
 Interface conductance `G = harmonic_mean(k_left, k_right)/Δx`. Radiation is linearized using `ε σ (T_o²+T_s²)(T_o+T_s)` and added to an adjustable forced-air / still-air convection coefficient. The implicit tridiagonal system is solved by Thomas elimination, avoiding explicit boundary instability at thin thicknesses.
 
-**Important limits:** no internal steam-driven convective transport or inward vapour condensation (so centre heating is under-predicted relative to real loaves), the *only* geometry change is effective thickness from a pan-constrained gas proxy (not actual free-loaf deformation), no oven preheating model, no thermal contraction/expansion, no vapor condensation within pores, no moisture-dependent spatial deformation, no actual sphere/cylinder geometry. Batch *mass* scales the output quantity and implied surface area at a fixed thickness; it does not by itself alter the 1D heat trajectory. A loaf's real shape, uncovered surfaces and pan contact matter greatly.
+**Important limits:** internal steam transport is represented only by the single fitted evaporation–condensation term below (no explicit vapour pressure field or convective gas flow), the *only* geometry change is effective thickness from a pan-constrained gas proxy (not actual free-loaf deformation), no oven preheating model, no thermal contraction/expansion, no vapor condensation within pores, no moisture-dependent spatial deformation, no actual sphere/cylinder geometry. Batch *mass* scales the output quantity and implied surface area at a fixed thickness; it does not by itself alter the 1D heat trajectory. A loaf's real shape, uncovered surfaces and pan contact matter greatly.
+
+### Evaporation–condensation ("heat pipe") transport (v0.10.0)
+
+In a wet loaf, water evaporates on the warm side of each gas cell, diffuses across it and condenses on the cooler side. This carries latent heat inward much faster than conduction alone, and is the main reason real crumb heats quickly to its ~100 °C plateau. Each wet cell's conductivity gets an apparent term
+
+```text
+k_ec = D_eff · L_v · dρ_v,sat/dT · g(water fraction)
+```
+
+where `ρ_v,sat` is the saturated vapour density (ideal gas, Antoine pressure). `g` fades the term out between 6 % and 1 % local water, so dry crust does not carry it. The share of each face's heat flow due to `k_ec` is accompanied by the matching water mass (`q_ec·Δt/L_v`), moved from the warm cell to the cool cell. The latent heat is therefore counted once, water is conserved, the outer layers dry into a crust, and the crumb gains a little moisture, as observed in real loaves.
+
+`D_eff = 4.4×10⁻⁵ m²/s` (refitted in 0.11.0 with the loaf on its real rack) was fitted to **one** published loaf: the centre reaches 97 °C at ~25 min (Papasidero et al.). A second published bake (Zhang et al. 2025) was kept out of the fit and is predicted within about 2 min for centre timing. With its glass-dish bottom (0.11.0) the water loss on that bake matches within about 3 %. See [research/reference-bakes.md](../../research/reference-bakes.md). The fitted value is close to water vapour's free-air diffusivity, so it should be read as an effective parameter that also absorbs geometry and microstructure effects.
+
+### Shapes and pan / support contact (v0.11.0)
+
+The same 1D finite-volume equations run in three coordinate systems ([`geometry.py`](geometry.py)):
+
+- **slab**: heat flows through the thickness; the area per cell is constant.
+- **cylinder**: radial heat flow in a long loaf (baguette); face area ∝ r.
+- **sphere**: radial heat flow in a roll or boule; face area ∝ r².
+
+Gas expansion scales the slab's thickness on a fixed footprint, or the cylinder's or sphere's radius. Cell volumes give each cell's mass share, which the high-heat post-processor now uses.
+
+A slab can have a different **bottom** from its top. It is then solved over its full thickness, bottom to top, instead of centre to surface:
+
+- **none**: both faces open and identical, the legacy symmetric half-slab.
+- **rack + baking paper**: an open bottom with 95 % of the top's heat transfer and 35 % of its evaporation. Both factors are assumptions.
+- **solid pan / stone / steel**: the pan is an extra lumped temperature node in the implicit system. It exchanges heat with the oven through its underside (convection plus radiation scaled by its emissivity) and with the dough through a contact conductance. Half the plate's own conduction resistance sits in series on each side. The dough's bottom face is sealed (no evaporation). Stones, steels and cast iron start at oven temperature (preheated); trays and glass start at 22 °C.
+
+Pan density, heat capacity, conductivity and emissivity are handbook values for the material. Dough–pan contact conductance (250–300 W m⁻² K⁻¹) is an assumption. A tin's side walls are not modelled, and round shapes ignore pans.
+
+When both faces are made identical, the full-thickness solver reproduces the symmetric solver; this is checked in `tests/test_geometry.py`. A slab with a non-symmetric bottom also reports `bottom_c`, `pan_c`, `bottom_browning_index` and `coldest_c`.
+
+### Altitude, water activity and browning (v0.12.0)
+
+**Altitude.** The oven's air pressure follows the International Standard Atmosphere, `p = 101325·(1 − 2.25577×10⁻⁵·h)^5.25588` Pa. Water's boiling point comes from the inverted Antoine equation: 100.0 °C at sea level, 95.0 °C at 1,500 m and 90.0 °C at 3,000 m. That boiling point is the ceiling for wet crumb and for the open-pan liquids. The vapour-pressure cap and the gas-expansion law also use the local pressure, so the same CO₂ makes more volume higher up. Recipe changes that bakers make at altitude are not modelled.
+
+**Water activity.** Surface evaporation is driven by `a_w·p_sat(T) − p_vapour,oven`. Here `a_w` is the dissolved-sugar/salt proxy multiplied by the water activity of the bread matrix. The matrix value comes from inverting the bread-crust desorption isotherm (GAB model) of Hamdami, Monteau & Le Bail (2006), *Int. J. Food Sci. Tech.* 41:33–44, Table 2: `X_m = 0.0778 kg/kg dry`, `C = 34.09`, `K = 0.81`. This replaces an ad hoc "liquid availability" factor and gives a falling drying rate as the crust dries. The parameters were measured at 25 °C; at baking temperatures a given moisture content has a somewhat higher `a_w`.
+
+**Browning.** The browning index is now the progress of a first-order colour reaction, `100·(1 − exp(−∫k dt))`, where:
+
+- `k = k₀·exp(−E_a/RT)`, with `k₀ = 42,000 s⁻¹` and `E_a = 64,151 J/mol`. These are the bread-crust browning constants of Zanoni, Peri & Bruno (1995), *LWT* 28:604–609, as tabulated in Purlis (2010), *J. Food Eng.* 99:239–249. The original paper's exact functional form is not reproduced; only its Arrhenius rate is used.
+- `k` is switched on smoothly only above about 120 °C and below `a_w` ≈ 0.6. Purlis & Salvadori (2009), *Food Res. Int.* 42:865–870, give these as the minimum conditions for bread colour formation.
+- `T` is the crust **skin** temperature, taken from the flux balance at the outer face, not the outer cell's average. The skin is what browns, and the cell average lags it badly on a ~1.5 mm grid.
+- A substrate factor (sugar and protein relative to a lean bread) and a baking-soda factor remain uncalibrated multipliers.
+- A slab with a separate bottom has its own bottom index, driven by the bottom face temperature.
+
+**Whole-loaf colour change.** Inside the range it was fitted on (oven 180–220 °C, weight loss above 7 %), the summary also reports `ΔE = (0.0266·T_oven + 3.4991)·weight-loss %` from Purlis & Salvadori (2007), *J. Food Eng.* 80:1107–1115. Outside that range it is left blank.
+
+**Headline warning.** `summary.headline_warning` picks the single most decision-relevant warning from a priority list, such as an empty grid, an extreme oven, a cold centre or high altitude. The standing caveats are always listed in full but never become the headline.
 
 ## Moisture model
 
@@ -48,7 +98,7 @@ Three indices are presented as **relative laboratory hypotheses**, not predictio
 
 - Starch gelatinization proxy: water-gated sigmoidal temperature activation with first-order completion, only if flour is present.
 - Protein thermal-setting proxy: sigmoidal temperature activation with first-order completion.
-- Surface browning index: temperature-sensitive kinetic surrogate, modulated by local dryness, protein and sugar concentrations and a rough soda alkalinity effect.
+- Surface browning index: since v0.12.0, a first-order reaction with literature Arrhenius constants, driven by the crust skin temperature and gated by temperature and water activity (see below).
 
 The model now includes **illustrative yeast CO₂ and baking-powder CO₂ source terms**, an empirical bubble-retention factor and an effective-volume index that changes the thermal slab thickness. It does **not** simulate validated yeast metabolism, fluid elasticity, actual bubble pressure, bubble collapse, free-loaf deformation, crumb morphology, fat polymorphism or enzymatic hydrolysis. Baking soda affects the provisional browning index but its reaction with acid and CO₂ production are not modeled. These new submodels are exploratory: changing the yeast slider changes a calculated gas estimate, **not yet a validated rise prediction**.
 

@@ -55,13 +55,17 @@ def liquid_kind(recipe: dict) -> str:
     return 'solid'
 
 
-def _sugar_bp_c(sugar_g: float, water_g: float) -> float:
-    """Smooth empirical screening curve. Not a real candy thermometer model."""
+def _sugar_bp_c(sugar_g: float, water_g: float, base_bp_c: float = 100.0) -> float:
+    """Smooth empirical screening curve. Not a real candy thermometer model.
+
+    base_bp_c is pure water's boiling point at the oven's air pressure
+    (100 °C at sea level, lower at altitude).
+    """
     if water_g < 1e-8:
-        return 160.0
+        return base_bp_c + 60.0
     fraction = clamp(sugar_g / max(1e-8, sugar_g + water_g), 0, 0.999)
     ratio = fraction / max(0.001, 1-fraction)
-    return 100.0 + clamp(3.8 * ratio**0.7, 0, 55)
+    return base_bp_c + clamp(3.8 * ratio**0.7, 0, 55)
 
 
 def simulate_liquid(recipe: dict, cfg: dict, warnings: list[str], kind: str, version: str) -> dict:
@@ -93,6 +97,8 @@ def simulate_liquid(recipe: dict, cfg: dict, warnings: list[str], kind: str, ver
     oat_solid_g = oats_g * 0.915
     brownable_g = banana_solid_g + oat_solid_g + sugar_g + milk_g * 0.12
     # Some sugar-rich bases are handled by the preexisting syrup proxy.
+    base_bp = cfg.get('boil_c', 100.0)
+    p_amb = cfg.get('pressure_pa', 101325.0)
     steps = max(1, math.ceil(cfg['minutes']*60.0 / 3.0))
     dt = cfg['minutes']*60.0 / steps if cfg['minutes'] else 0.0
     interval = max(1, steps//115)
@@ -179,10 +185,11 @@ def simulate_liquid(recipe: dict, cfg: dict, warnings: list[str], kind: str, ver
         cp_J_K = max(0.05,cp_J_K)
         H = (h_top+h_bottom)*pan_area_m2
         Q = cp_J_K*(cfg['oven_c']-T)*(1-math.exp(-H*dt/cp_J_K))  # J
-        bp = _sugar_bp_c(sugar_g, water_g)
+        bp = _sugar_bp_c(sugar_g, water_g, base_bp)
         # Gentle below-boiling evaporation: a small fraction of a bounded
         # surface mass-transfer estimate. Boiling loss is energy-limited.
-        vapor_flux = 1.1e-8 * max(0., (min(101325,610.8*math.exp(17.27*min(99,T)/(min(99,T)+237.3)))) -
+        t_sub = min(base_bp - 1.0, T)
+        vapor_flux = 1.1e-8 * max(0., (min(p_amb, 610.8*math.exp(17.27*t_sub/(t_sub+237.3)))) -
                                     0.01*cfg['steam_pct']*101325)
         sub_gate = 1-_sigmoid((T-bp+3)/2.0)
         sub_evap_g = min(water_g, max(0.,vapor_flux*pan_area_m2*dt*1000*0.20*sub_gate),

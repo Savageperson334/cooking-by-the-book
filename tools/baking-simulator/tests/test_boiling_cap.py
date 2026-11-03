@@ -48,8 +48,8 @@ class BoilingCeiling(unittest.TestCase):
 
     def test_cold_centre_is_flagged(self):
         r = run()
-        if r['summary']['center_c'] < 90 and r['summary']['surface_c'] > BOIL_C:
-            self.assertTrue(any('under-predicted' in w for w in r['warnings']))
+        if r['summary']['coldest_c'] < 90:
+            self.assertTrue(any('Coldest point ended below 90' in w for w in r['warnings']))
 
     def test_zero_minute_run_has_single_initial_frame(self):
         r = run(minutes=0)
