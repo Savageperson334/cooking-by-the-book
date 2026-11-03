@@ -1,4 +1,4 @@
-# BakeLab 0.9.2 — Model specification and evidence
+# BakeLab 0.10.0 — Model specification and evidence
 
 *Sections below are labelled by the version that introduced them; the core heat/moisture description originated in v0.2.*
 
@@ -28,7 +28,19 @@ After each heat step, any cell that still holds liquid water and is above 100 °
 
 Interface conductance `G = harmonic_mean(k_left, k_right)/Δx`. Radiation is linearized using `ε σ (T_o²+T_s²)(T_o+T_s)` and added to an adjustable forced-air / still-air convection coefficient. The implicit tridiagonal system is solved by Thomas elimination, avoiding explicit boundary instability at thin thicknesses.
 
-**Important limits:** no internal steam-driven convective transport or inward vapour condensation (so centre heating is under-predicted relative to real loaves), the *only* geometry change is effective thickness from a pan-constrained gas proxy (not actual free-loaf deformation), no oven preheating model, no thermal contraction/expansion, no vapor condensation within pores, no moisture-dependent spatial deformation, no actual sphere/cylinder geometry. Batch *mass* scales the output quantity and implied surface area at a fixed thickness; it does not by itself alter the 1D heat trajectory. A loaf's real shape, uncovered surfaces and pan contact matter greatly.
+**Important limits:** internal steam transport is represented only by the single fitted evaporation–condensation term below (no explicit vapour pressure field or convective gas flow), the *only* geometry change is effective thickness from a pan-constrained gas proxy (not actual free-loaf deformation), no oven preheating model, no thermal contraction/expansion, no vapor condensation within pores, no moisture-dependent spatial deformation, no actual sphere/cylinder geometry. Batch *mass* scales the output quantity and implied surface area at a fixed thickness; it does not by itself alter the 1D heat trajectory. A loaf's real shape, uncovered surfaces and pan contact matter greatly.
+
+### Evaporation–condensation ("heat pipe") transport (v0.10.0)
+
+In a wet loaf, water evaporates on the warm side of each gas cell, diffuses across it and condenses on the cooler side. This carries latent heat inward much faster than conduction alone, and is the main reason real crumb heats quickly to its ~100 °C plateau. Each wet cell's conductivity gets an apparent term
+
+```text
+k_ec = D_eff · L_v · dρ_v,sat/dT · g(water fraction)
+```
+
+where `ρ_v,sat` is the saturated vapour density (ideal gas, Antoine pressure). `g` fades the term out between 6 % and 1 % local water, so dry crust does not carry it. The share of each face's heat flow due to `k_ec` is accompanied by the matching water mass (`q_ec·Δt/L_v`), moved from the warm cell to the cool cell. The latent heat is therefore counted once, water is conserved, the outer layers dry into a crust, and the crumb gains a little moisture, as observed in real loaves.
+
+`D_eff = 4.6×10⁻⁵ m²/s` was fitted to **one** published loaf: the centre reaches 97 °C at ~25 min (Papasidero et al.). A second published bake (Zhang et al. 2025) was kept out of the fit and is predicted within about 2 min for centre timing. Water loss on that bake is still ~38 % high, likely because the model treats the dough as a slab evaporating from both faces while the real dough sat in a glass mould. See [research/reference-bakes.md](../../research/reference-bakes.md). The fitted value is close to water vapour's free-air diffusivity, so it should be read as an effective parameter that also absorbs geometry and microstructure effects.
 
 ## Moisture model
 

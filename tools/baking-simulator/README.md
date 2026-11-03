@@ -1,6 +1,6 @@
 # BakeLab — experimental browser baking simulator
 
-**Running prototype v0.9.4** in the [Cooking by the Book](../../README.md) experiment toolkit.
+**Running prototype v0.9.4 · engine 0.10.0** in the [Cooking by the Book](../../README.md) experiment toolkit.
 
 [Open browser app](index.html) · [Scientific methods and limitations](MODEL.md) · [Python engine](engine.py) · [20-ingredient catalogue](ingredients.json)
 
@@ -177,3 +177,17 @@ The prior pan-overlay fix was present in the deployed source but could remain in
 ## v0.9.4 — browser-visible floating oval correction
 
 The broad tan semicircle above the oven in browser screenshots was not food: the preview rendered a decorative SVG ellipse **and** a separate CSS radial gradient behind the oven frame. Both are now removed. Visual Chromium checks at 940 px and 1440 px reproduced the stray oval and verified it disappears when both layers are removed. The automated suite also asserts the two drawing paths stay removed. This changes presentation only, not the physics model or the pan/food geometry. JavaScript, CSS and worker URLs now include `?ui=0.9.4` to distinguish this release from cached prior files.
+
+
+## Engine 0.10.0 — steam heat transport, checked against published loaves
+
+The dough solver now includes an **evaporation–condensation ("heat pipe") term**: steam carries heat inward through the wet crumb, and the matching water moves with it. This was the main reason the centre heated far too slowly. The term has one parameter, fitted to one published loaf and then checked, unchanged, against a second published bake:
+
+| | Measured | Before | Now |
+|---|---|---|---|
+| Round loaf (fit): centre at 97 °C | ~25 min | never (80 °C at 40 min) | 25 min |
+| Round loaf: weight loss | 8.9 % | 10.1 % | 7.9 % |
+| Thin layer (held out): centre > 93 °C | ~17 min | 23.8 min | 16.5 min |
+| Thin layer: water lost | 15.0 g | 21.4 g | 20.7 g |
+
+Crust still forms: outer layers dry and heat past 100 °C. The crumb also gains a little moisture, as in real loaves. Water loss on the thin glass-mould bake remains too high (see the [reference bakes](../../research/reference-bakes.md) note). The interface build (`?ui=0.9.4`) is unchanged; only the Python engine and its version tag changed.

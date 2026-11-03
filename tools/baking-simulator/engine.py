@@ -11,7 +11,7 @@ import json
 import math
 from typing import Any
 
-VERSION = "0.9.2"
+VERSION = "0.10.0"
 from liquids import liquid_kind, simulate_liquid
 from thermal_breakdown import annotate_high_heat
 from physical_fracture import annotate_fracture
@@ -19,6 +19,7 @@ COMPONENTS = ("water", "protein", "fat", "starch", "sugar", "fiber", "ash")
 SIGMA = 5.670374419e-8  # W / (m² K⁴)
 LV = 2.26e6  # J / kg, reference latent heat of water
 WATER_CP = 4180.0  # J/(kg K)
+EC_DIFFUSIVITY = 4.6e-5  # m2/s effective vapour diffusivity; FITTED to one loaf, see evaporation_condensation_k
 BOIL_C = 100.0  # liquid-water ceiling inside wet crumb at ~1 atm (°C)
 R_GAS = 8.314462618  # J/(mol K)
 CO2_G_MOL = 44.0095
@@ -73,6 +74,33 @@ def _vapor_pressure(temp_c: float) -> float:
     """Antoine correlation for water at 1–100°C, capped at 1 atm."""
     t = bounded(temp_c, 1.0, 100.0)
     return min(101325.0, 133.322368 * 10 ** (8.07131 - 1730.63 / (233.426 + t)))
+
+
+def _vapour_density(temp_c: float) -> float:
+    """Saturated water-vapour density [kg m-3] (ideal gas, Antoine pressure)."""
+    return 0.018015 * _vapor_pressure(temp_c) / (R_GAS * (temp_c + 273.15))
+
+
+def evaporation_condensation_k(temp_c: float, water_frac: float) -> float:
+    """Apparent conductivity [W m-1 K-1] from the evaporation-condensation 'heat pipe'.
+
+    Water evaporates on the warm side of each gas cell, diffuses across it and
+    condenses on the cooler side, carrying latent heat. This is represented as
+    k_ec = D_eff * L_v * d(rho_sat)/dT (de Vries-type equivalent property),
+    switched off in cells that have dried out. The solver also relocates the
+    matching water (q_ec / L_v) from the warm cell to the cool one, so the
+    latent heat is counted once (in the conductance) and water is conserved.
+    D_eff is a single effective vapour diffusivity fitted to ONE published
+    loaf (Papasidero et al. 2015, see reference_bakes.json); not a measured
+    property of any particular dough.
+    """
+    if water_frac <= 0.01:
+        return 0.0
+    t = bounded(temp_c, 1.0, 99.5)
+    slope = (_vapour_density(t + 0.5) - _vapour_density(t - 0.5))  # per 1 K
+    g = bounded((water_frac - 0.01) / 0.05, 0.0, 1.0)  # exactly off below 1 % water
+    wet_gate = g * g * (3.0 - 2.0 * g)
+    return EC_DIFFUSIVITY * LV * slope * wet_gate
 
 
 def composition_of(catalog: list[dict], amounts: dict[str, float]) -> dict[str, Any]:
@@ -298,7 +326,7 @@ def simulate(payload: dict) -> dict:
     for step in range(steps):
         dx_current = dx * volume_factor  # the fixed footprint thickens on gas expansion
         # composition and properties are recomputed from each cell's retained water
-        cps, ks = [], []
+        cps, ks, kecs = [], [], []
         for i in range(n):
             water_frac = wet[i] / max(wet[i]+dry[i], 1e-12)
             local = {"water": water_frac}
@@ -309,7 +337,8 @@ def simulate(payload: dict) -> dict:
             # gas pores and crumb structure lower effective conduction; provisional
             porosity_factor = 0.75 + 0.15 * min(1.0, recipe["gluten_fraction"] / 0.10)
             cps.append((dry[i] + wet[i]) * cp)  # J/(m2 K)
-            ks.append(k * porosity_factor)
+            kecs.append(evaporation_condensation_k(temps[i], water_frac))
+            ks.append(k * porosity_factor + kecs[-1])
 
         # Linearized radiative+convective boundary; implicit Euler heat flow.
         # Tridiagonal solve avoids explicit-scheme instability for very thin or
@@ -356,6 +385,24 @@ def simulate(payload: dict) -> dict:
         for i in range(n-2,-1,-1):
             next_temp[i] = (right[i]-upper[i]*next_temp[i+1])/diag[i]
         temps = next_temp
+        # The heat-pipe share of each face's heat flow is carried by water that
+        # evaporated on the warm side and condensed on the cool side, so move
+        # that water (q_ec * dt / L_v) as well. Energy is already accounted for
+        # by the conductance; this keeps the warm side drying and lets the
+        # crumb gain some moisture, as observed in real loaves.
+        moved = [0.0] * n
+        for j in (range(1, n) if any(kecs) else ()):
+            k_mean = 0.5 * (ks[j-1] + ks[j])
+            if k_mean <= 0.0:
+                continue
+            q_ec = face[j] * (temps[j] - temps[j-1]) * 0.5 * (kecs[j-1] + kecs[j]) / k_mean
+            mass = q_ec * dt / LV  # >0: from cell j to j-1 (outer to inner)
+            src = j if mass > 0 else j-1
+            mass = math.copysign(min(abs(mass), 0.5 * max(0.0, wet[src])), mass)
+            moved[j] -= mass
+            moved[j-1] += mass
+        if any(moved):
+            wet = [max(0.0, wet[i] + moved[i]) for i in range(n)]
         # Wet crumb cannot hold liquid water far above its boiling point. Any
         # sensible heat above BOIL_C in a cell that still has water is spent
         # boiling that water off; the vapour is assumed to vent through the
@@ -435,8 +482,8 @@ def simulate(payload: dict) -> dict:
         warnings.append("Starch and protein transition indices are disabled without flour; use the temperature and moisture traces only.")
     if sum(wet)+dry_kg_m2 < 0.01*original_kg_m2:
         warnings.append("Almost no mass remains: the calculated temperature belongs to an empty computational grid and is not a material prediction.")
-    if recipe["flour_g"] > 0 and cfg["minutes"] > 0 and temps[-1] > BOIL_C and temps[0] < 90.0:
-        warnings.append("Centre heating is likely under-predicted: this conduction-only model omits the internal steam (evaporation-condensation) transport that heats real crumb faster.")
+    if recipe["flour_g"] > 0 and cfg["minutes"] > 0 and temps[0] < 90.0:
+        warnings.append("Centre ended below 90 °C. Internal steam heat transport is one effective term fitted to a single published loaf (about ±2–3 min on an unseen bake); treat centre timing as approximate, not as doneness.")
     if cfg["oven_c"] > 280:
         warnings.append("At very high temperatures, pyrolysis, fire hazards and chemical decomposition are outside this model.")
     warnings.append("Screening model: 1D slab, fixed geometry, simplified evaporation and reaction indices. Not validated for food safety or exact doneness.")
@@ -473,7 +520,7 @@ def simulate(payload: dict) -> dict:
         "timeline": timeline,
         "warnings": warnings,
         "metadata": {"grid_cells": n, "steps": steps, "dt_s": round(dt,5),
-                     "method": "1D implicit finite-volume heat + explicit moisture, 100 °C wet-cell boiling cap, gas-index thickness coupling (experimental)",
+                     "method": "1D implicit finite-volume heat + explicit moisture, evaporation-condensation apparent conductivity with matching vapour transfer, 100 °C wet-cell boiling cap, gas-index thickness coupling (experimental)",
                      "reference": "Choi–Okos thermal properties; Purlis/Salvadori heat/moisture modelling"}
     },recipe),recipe)
 

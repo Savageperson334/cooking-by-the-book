@@ -14,6 +14,10 @@ This folder is a reading and reference notebook, **not** a list of verified reci
 | Diffusion and transport | Moisture, oxygen access, enzyme penetration, delayed activation |
 | Traditional food chemistry | Historic fermentation, milk clotting, pickling, sugar and starch techniques |
 
+## Reference data
+
+- [Reference bakes](reference-bakes.md) — published loaves with measured centre temperatures, used to fit and check BakeLab.
+
 ## Reading queue
 
 - [The Sourdough Framework](https://github.com/hendricius/the-sourdough-framework) — a model for explaining the science behind repeatable cooking.
