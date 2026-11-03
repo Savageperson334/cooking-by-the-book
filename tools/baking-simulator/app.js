@@ -186,6 +186,8 @@ function renderResult(){
     $('thermal-ash').textContent=fmt(summary.estimated_ash_g ?? 0,2)+' g';
     $('thermal-crack').textContent=fmt(summary.physical_crack_risk_pct ?? 0,1)+' / 100';
     $('thermal-chem').textContent=fmt(summary.estimated_triglyceride_cracked_g ?? 0,2)+' g ('+fmt(summary.estimated_triglyceride_cracked_pct ?? 0,1)+'% of fat)';
+    $('thermal-chem-point').textContent=summary.estimated_cracking_1pct_crossing_min==null?'Not reached':fmt(summary.estimated_cracking_1pct_crossing_min,1)+' min · '+bothTemps(summary.estimated_cracking_1pct_material_c);
+    $('thermal-fracture-point').textContent=summary.physical_crack_proxy_20pct_crossing_min==null?'Not reached':fmt(summary.physical_crack_proxy_20pct_crossing_min,1)+' min · '+bothTemps(summary.physical_crack_proxy_20pct_surface_c);
     $('fracture-damage').textContent=fmt(summary.fracture_damage_pct ?? 0,1)+' / 100';
     $('fracture-stress').textContent=fmt(summary.fracture_stress_ratio_proxy ?? 0,2)+' (relative)';
     $('chem-conversion').textContent=fmt(summary.chemical_conversion_pct ?? 0,1)+' %';
