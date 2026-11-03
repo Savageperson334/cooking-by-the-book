@@ -49,7 +49,7 @@ let catalog=[],amounts={},settings={...defaults},engineReady=false,last=null,req
 let snapshots={A:null,B:null};
 let playing=false,playHandle=0,playStart=0,playOrigin=0,playValue=100;
 const BAKE_PLAY_DURATION=16000; // milliseconds for 0..100 at 1x
-const worker = new Worker('./worker.js?ui=0.9.3',{type:'module'});
+const worker = new Worker('./worker.js?ui=0.9.4',{type:'module'});
 worker.onmessage = ({data}) => {
   if(data.type==='ready') {
     engineReady=true;$('engine-dot').classList.add('ready');$('engine-status').textContent='Python model ready';$('run').disabled=false;
@@ -349,9 +349,8 @@ function drawBakeScene(frame){
   addGradient('scenePanSideGradient',[['0%','#71828a',1],['100%','#23363c',1]]);
   svg.append(defs);
   const progress=clamp(frame.minute/Math.max(1,last.result.settings.minutes),0,1);
-  const ovenGlow=clamp((last.result.settings.oven_c-70)/260,0,1);
+  // Do not paint lighting beyond the oven aperture.
   svg.append(svgEl('rect',{x:0,y:0,width:w,height:h,fill:'#0e161a'}));
-  svg.append(svgEl('ellipse',{cx:380,cy:46,rx:228,ry:34,fill:`rgba(245,205,116,${0.08+0.15*ovenGlow})`}));
   svg.append(svgEl('rect',{x:42,y:32,width:676,height:230,rx:18,fill:'rgba(24,37,42,.94)',stroke:'#34474d','stroke-width':2}));
   svg.append(svgEl('rect',{x:72,y:61,width:616,height:168,rx:10,fill:'rgba(9,15,18,.98)',stroke:'#223139','stroke-width':1.2}));
   svg.append(svgEl('ellipse',{cx:380,cy:236,rx:242,ry:18,class:'scene-shadow'}));

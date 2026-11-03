@@ -1,6 +1,6 @@
 # BakeLab — experimental browser baking simulator
 
-**Running prototype v0.9.3** in the [Cooking by the Book](../../README.md) experiment toolkit.
+**Running prototype v0.9.4** in the [Cooking by the Book](../../README.md) experiment toolkit.
 
 [Open browser app](index.html) · [Scientific methods and limitations](MODEL.md) · [Python engine](engine.py) · [20-ingredient catalogue](ingredients.json)
 
@@ -172,3 +172,8 @@ The Results card displays the first simulated *physical fracture-index 20/100 cr
 ## v0.9.3 — stale UI asset prevention
 
 The prior pan-overlay fix was present in the deployed source but could remain invisible in a previously opened tab or cached browser assets. The HTML now references release-versioned JavaScript and CSS (`?ui=0.9.3`), and the JavaScript loads a correspondingly versioned Web Worker. This helps ensure that a newly opened page uses the matching interface revision rather than an older cached script. **Already-open tabs do not automatically update**; open [the versioned app URL](https://savageperson334.github.io/cooking-by-the-book/tools/baking-simulator/?ui=0.9.3) or reload once to switch builds. The scene labels and warnings remain outside the SVG, beneath the pan. This is a cache-consistency fix, not a change to the numerical baking model.
+
+
+## v0.9.4 — browser-visible floating oval correction
+
+The broad tan semicircle above the oven in browser screenshots was not food: the preview rendered a decorative SVG ellipse **and** a separate CSS radial gradient behind the oven frame. Both are now removed. Visual Chromium checks at 940 px and 1440 px reproduced the stray oval and verified it disappears when both layers are removed. The automated suite also asserts the two drawing paths stay removed. This changes presentation only, not the physics model or the pan/food geometry. JavaScript, CSS and worker URLs now include `?ui=0.9.4` to distinguish this release from cached prior files.
