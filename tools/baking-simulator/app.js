@@ -11,7 +11,10 @@ const ingredientVisuals={
   cornstarch:'#ece9dd',vital_gluten:'#d9c7a0',cocoa:'#5c3b2a'
 };
 const categories=['Grains','Liquids','Fats','Sweeteners','Leavening & salts','Starches & proteins'];
-const defaults={oven_c:220,minutes:35,thickness_mm:80,initial_c:22,steam_pct:5,fan:0,proof_minutes:60,proof_c:26,air_access_pct:100};
+const defaults={oven_c:220,minutes:35,thickness_mm:80,initial_c:22,steam_pct:5,fan:0,proof_minutes:60,proof_c:26,air_access_pct:100,shape:'slab',pan:'none'};
+// Mirrors geometry.py (SHAPES and PANS); tests check the ids stay in sync.
+const shapeOptions=[['slab','Flat slab (thickness)'],['cylinder','Long cylinder, e.g. baguette (diameter)'],['sphere','Ball, e.g. roll or boule (diameter)']];
+const panOptions=[['none','None, both faces open (legacy)'],['rack','Wire rack + baking paper'],['aluminium_sheet','Aluminium sheet, light (1.5 mm)'],['dark_steel_pan','Dark steel pan (1 mm)'],['glass_dish','Glass dish (5 mm)'],['cast_iron','Cast iron / Dutch oven base, preheated (5 mm)'],['baking_stone','Baking stone, preheated (15 mm)'],['baking_steel','Baking steel, preheated (6 mm)']];
 const cToF=c=>c*9/5+32;
 const fToC=f=>(f-32)*5/9;
 const bothTemps=c=>`${fmt(c,1)} °C / ${fmt(cToF(c),1)} °F`;
@@ -49,7 +52,7 @@ let catalog=[],amounts={},settings={...defaults},engineReady=false,last=null,req
 let snapshots={A:null,B:null};
 let playing=false,playHandle=0,playStart=0,playOrigin=0,playValue=100;
 const BAKE_PLAY_DURATION=16000; // milliseconds for 0..100 at 1x
-const worker = new Worker('./worker.js?ui=0.9.4',{type:'module'});
+const worker = new Worker('./worker.js?ui=0.11.0',{type:'module'});
 worker.onmessage = ({data}) => {
   if(data.type==='ready') {
     engineReady=true;$('engine-dot').classList.add('ready');$('engine-status').textContent='Python model ready';$('run').disabled=false;
@@ -111,6 +114,19 @@ function renderSettings(){
  const switcher=createElement('button',{class:'secondary unit-switch',type:'button',text:`Adjust in °${temperatureUnit} · switch to °${temperatureUnit==='C'?'F':'C'}`,'aria-label':'Switch temperature slider units'});
  switcher.addEventListener('click',()=>{temperatureUnit=temperatureUnit==='C'?'F':'C';wrapper.replaceChildren();renderSettings();renderResult();});
  unitPicker.append(switcher);wrapper.append(unitPicker);
+ // Shape and pan/support: discrete choices, sent to Python as strings.
+ for(const [key,label,options,note] of [
+   ['shape','Shape',shapeOptions,'Slab heats through its thickness; cylinder and ball heat from all round. For cylinder and ball, the depth slider is the diameter.'],
+   ['pan','Pan / support (slab only)',panOptions,'Changes the bottom face: open, rack + paper, or a solid pan solved as its own temperature. Handbook material values; dough-pan contact is assumed.']]){
+   const row=createElement('div',{class:'setting'});
+   const head=createElement('div',{class:'setting-head'});
+   const select=createElement('select',{'aria-label':label,id:'setting-'+key});
+   for(const [value,text] of options){const o=createElement('option',{value,text});if(settings[key]===value)o.selected=true;select.append(o);}
+   select.addEventListener('change',()=>{settings[key]=select.value;queueRun();});
+   head.append(createElement('span',{text:label}));
+   row.append(head,select,createElement('div',{class:'subtle',text:note}));
+   wrapper.append(row);
+ }
  for(const [key,label,unit,min,max,step] of settingDefs){
     const temperature=temperatureKeys.has(key);
     const row=createElement('div',{class:'setting'});
@@ -175,7 +191,8 @@ function renderResult(){
     $('fluid-mode').textContent=s.residue_state||({aqueous:'Water-rich',biphasic:'Oil + water',syrup:'Sugar-rich',oil:'Oil-rich',suspension:'Fruit/grain slurry'})[s.liquid_mode]||s.liquid_mode;
     $('computed-note').textContent=`Initial ${fmt(s.total_g,1)} g → ${fmt(s.end_mass_g,1)} g remaining (water-only loss). Open pan: estimated footprint ${fmt(s.pan_area_cm2,1)} cm², starting depth ${fmt(r.settings.thickness_mm,1)} mm; remaining solids ${fmt(s.solids_fraction_pct,1)}% by mass. Water and heat use a well-mixed approximation; banana/oat hydration, crust darkening and scorching are uncalibrated indices.`;
   } else {
-    $('computed-note').textContent=`Initial ${fmt(s.total_g,1)} g → estimated ${fmt(s.end_mass_g,1)} g water-loss-only; effective slab thickness ${fmt(s.thickness_mm_est,1)} mm. Proof-only rise ${fmt(s.proof_rise_pct,1)}%; retention factor ${fmt(s.gas_retention_factor,3)}. ${r.metadata.grid_cells} spatial cells, ${r.metadata.steps.toLocaleString()} steps. Gas chemistry is uncalibrated and CO₂ venting is excluded from mass totals.`;
+    const bottomNote=s.bottom_c==null?'':` Bottom ${bothTemps(s.bottom_c)}${s.pan_c==null?'':` (pan ${bothTemps(s.pan_c)})`}, bottom browning index ${fmt(s.bottom_browning_index,1)}; coldest point ${bothTemps(s.coldest_c)}.`;
+    $('computed-note').textContent=`Initial ${fmt(s.total_g,1)} g → estimated ${fmt(s.end_mass_g,1)} g water-loss-only; ${s.shape||'slab'} ${s.shape&&s.shape!=='slab'?'diameter':'thickness'} ${fmt(s.thickness_mm_est,1)} mm.${bottomNote} Proof-only rise ${fmt(s.proof_rise_pct,1)}%; retention factor ${fmt(s.gas_retention_factor,3)}. ${r.metadata.grid_cells} spatial cells, ${r.metadata.steps.toLocaleString()} steps. Gas chemistry is uncalibrated and CO₂ venting is excluded from mass totals.`;
   }
   $('warnings').replaceChildren(...r.warnings.map(text=>createElement('li',{text})));
   const thermal=$('thermal-stats');
@@ -616,7 +633,10 @@ function updateScrub(val){if(!last)return;
    svg.append(svgEl('rect',{x:10+i*740/n,y:10,width:740/n+1,height:90,fill:`rgb(${rgb.join(',')})`}));
  }
  svg.append(svgEl('rect',{x:10,y:10,width:740,height:90,rx:3,fill:'none',stroke:'#69807a','stroke-width':1}));
- [['CENTER',frame.center_c,14],['SURFACE',frame.surface_c,620]].forEach((a,i)=>{let text=svgEl('text',{x:a[2],y:119,fill:'#9cafa9','font-size':11});text.textContent=`${a[0]} ${fmt(a[1],1)} °C / ${fmt(cToF(a[1]),1)} °F`;svg.append(text);});
+ const bottomUp=last.result.profile?.axis==='bottom_to_top';
+ $('scale-left').textContent=bottomUp?'BOTTOM':'CENTER';$('scale-right').textContent=bottomUp?'TOP':'SURFACE';
+ $('cross-axis-note').textContent=(bottomUp?'From bottom to top':'From center to surface')+' · sample a moment in the run';
+ (bottomUp?[['BOTTOM',frame.bottom_c,14],['TOP',frame.surface_c,620]]:[['CENTER',frame.center_c,14],['SURFACE',frame.surface_c,620]]).forEach((a,i)=>{let text=svgEl('text',{x:a[2],y:119,fill:'#9cafa9','font-size':11});text.textContent=`${a[0]} ${fmt(a[1],1)} °C / ${fmt(cToF(a[1]),1)} °F`;svg.append(text);});
 }
 function renderComparison(){const a=snapshots.A,b=snapshots.B;if(!a&&!b){$('comparison').textContent='Save snapshots using A and B. The numbers are independent model runs, not measurements.';return;}
  const rows=[['Oven (°C)',x=>x.inputs.settings.oven_c],['Bake (min)',x=>x.inputs.settings.minutes],['Proof (min)',x=>x.inputs.settings.proof_minutes],['Water in mix (%)',x=>x.result.summary.water_pct],['Center (°C)',x=>x.result.summary.center_c],['Surface (°C)',x=>x.result.summary.surface_c],['Water lost (%)',x=>x.result.summary.mass_loss_pct],['Estimated remaining mass (g)',x=>x.result.summary.estimated_remaining_mass_g],['Char remaining (g)',x=>x.result.summary.estimated_char_g],['Physical fissure risk (proxy %)',x=>x.result.summary.physical_crack_risk_pct],['Triglycerides cleaved (g)',x=>x.result.summary.estimated_triglyceride_cracked_g],['Liquid depth (mm)',x=>x.result.summary.liquid_depth_mm??null],['Remaining volume (mL)',x=>x.result.summary.liquid_volume_ml??null],['Water remaining (g)',x=>x.result.summary.water_remaining_g??null],['Rise proxy (%)',x=>x.result.summary.rise_pct],['CO₂ formed (g)',x=>x.result.summary.co2_generated_g],['Browning index',x=>x.result.summary.browning_index],['Residue browning proxy',x=>x.result.summary.residue_browning_index??null]];
@@ -664,7 +684,7 @@ function setupTabs(){
 }
 
 async function init(){
- try {catalog=await fetch('./ingredients.json').then(r=>{if(!r.ok)throw Error('Cannot load ingredients.json');return r.json();});} catch(e){showError('Could not load ingredients. Serve with python -m http.server or GitHub Pages. '+e.message);return;}
+ try {catalog=await fetch(`./ingredients.json?ui=${new URL(import.meta.url).searchParams.get('ui')||''}`).then(r=>{if(!r.ok)throw Error('Cannot load ingredients.json');return r.json();});} catch(e){showError('Could not load ingredients. Serve with python -m http.server or GitHub Pages. '+e.message);return;}
  for(const item of catalog)amounts[item.id]=item.amount;
  setupTabs();renderIngredients();renderSettings();updateMass();drawPlaceholderScene();
  window.addEventListener('resize',()=>{if(last)updateScrub(playValue);else drawPlaceholderScene();});

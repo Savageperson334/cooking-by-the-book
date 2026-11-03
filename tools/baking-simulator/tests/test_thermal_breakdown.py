@@ -59,6 +59,6 @@ class TestHighEnd(unittest.TestCase):
             self.assertIn(f'id="{id}"',html);self.assertIn(f"$('{id}')",js)
         self.assertIn('value="survival"',html)
         self.assertIn('value="fracture"',html)
-        self.assertIn('BUILD 0.9',html)
+        self.assertRegex(html, r'BUILD 0\.\d+')
 
 if __name__=='__main__': unittest.main()

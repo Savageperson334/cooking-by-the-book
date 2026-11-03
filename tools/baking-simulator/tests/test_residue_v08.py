@@ -90,7 +90,7 @@ class TestUIContract(unittest.TestCase):
         self.assertIn("let temperatureUnit='C'",js)
         self.assertIn('bothTemps(s.center_c)',js)
         self.assertIn("const cToF=c=>c*9/5+32",js)
-        self.assertIn('BUILD 0.9',html)
+        self.assertRegex(html, r'BUILD 0\.\d+')
 
     def test_new_chart_keys_and_ingredient_demo(self):
         js=(ROOT/'app.js').read_text()

@@ -10,7 +10,12 @@
         "url": "https://re.public.polimi.it/bitstream/11311/970550/4/Bread%20baking%20modeling-Coupling%20heat%20transfer%20and%20weight%20loss_11311-970550_Manenti.pdf"
       },
       "setup": {
-        "recipe_baker_pct": {"wheat_flour": 100, "water": 58, "salt": 2, "dry_yeast": 2},
+        "recipe_baker_pct": {
+          "wheat_flour": 100,
+          "water": 58,
+          "salt": 2,
+          "dry_yeast": 2
+        },
         "dough_mass_g": 810,
         "shape": "Italian pagnotta, roughly oblate ellipsoid, 21.7 cm diameter x 5.0 cm high, on a grid with baking paper (no pan)",
         "oven": "domestic oven, 200 C setpoint, forced convection ~2 m/s, preheated; door opening dropped air to ~100 C before recovery",
@@ -20,15 +25,32 @@
       "measured": {
         "centre_lag_min": 5,
         "centre_ramp_min": 20,
-        "centre_plateau_c": [97, 99],
+        "centre_plateau_c": [
+          97,
+          99
+        ],
         "centre_t97_min_approx": 25,
         "final_mass_g": 738,
         "mass_loss_pct": 8.9,
         "height_after_cm": 7.0
       },
       "bakelab_inputs": {
-        "amounts": {"bread_flour": 500, "water": 290, "salt": 10, "instant_yeast": 10},
-        "settings": {"oven_c": 200, "fan": 1, "minutes": 40, "thickness_mm": 50, "initial_c": 25, "steam_pct": 5}
+        "amounts": {
+          "bread_flour": 500,
+          "water": 290,
+          "salt": 10,
+          "instant_yeast": 10
+        },
+        "settings": {
+          "oven_c": 200,
+          "fan": 1,
+          "minutes": 40,
+          "thickness_mm": 50,
+          "initial_c": 25,
+          "steam_pct": 5,
+          "shape": "slab",
+          "pan": "rack"
+        }
       }
     },
     {
@@ -54,9 +76,22 @@
         "initial_water_g": 64.5
       },
       "bakelab_inputs": {
-        "amounts": {"bread_flour": 88.5, "water": 53.8, "instant_yeast": 0.9},
-        "settings": {"oven_c": 180, "fan": 0, "minutes": 30, "thickness_mm": 20, "initial_c": 28, "steam_pct": 5},
-        "_note": "Amounts chosen to reproduce the stated 64.5 g water and 0.82 dry-basis moisture with BakeLab's flour composition; this implies W/F ~0.61 rather than the stated 0.55. The real layer is heated mainly from below through glass and from above, not symmetrically."
+        "amounts": {
+          "bread_flour": 88.5,
+          "water": 53.8,
+          "instant_yeast": 0.9
+        },
+        "settings": {
+          "oven_c": 180,
+          "fan": 0,
+          "minutes": 30,
+          "thickness_mm": 20,
+          "initial_c": 28,
+          "steam_pct": 5,
+          "shape": "slab",
+          "pan": "glass_dish"
+        },
+        "_note": "Amounts chosen to reproduce the stated 64.5 g water and 0.82 dry-basis moisture with BakeLab's flour composition; this implies W/F ~0.61 rather than the stated 0.55. Modelled as a slab in a glass dish (bottom sealed, heated through 5 mm glass); the mould's side walls are not modelled."
       }
     }
   ]

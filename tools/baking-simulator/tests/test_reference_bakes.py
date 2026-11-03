@@ -58,8 +58,9 @@ class HoldoutCase(unittest.TestCase):
     """Zhang et al. 2025: ~20 mm dough in a glass mould, 180 °C, 30 min. NOT used for fitting."""
     case = 'zhang2025_glass_mould'
 
-    def test_centre_passes_93c_near_measured_time(self):
-        t93 = first_minute(simulate(self.case), 93.0)
+    def test_coldest_point_passes_93c_near_measured_time(self):
+        r = simulate(self.case)
+        t93 = next((f['minute'] for f in r['timeline'] if f['coldest_c'] >= 93.0), None)
         self.assertIsNotNone(t93)
         self.assertAlmostEqual(t93, CASES[self.case]['measured']['coolest_point_above_93c_min'], delta=4.0)
 
@@ -68,14 +69,14 @@ class HoldoutCase(unittest.TestCase):
         self.assertIsNotNone(t99)
         self.assertAlmostEqual(t99, CASES[self.case]['measured']['t2_reach_100c_min'], delta=4.0)
 
-    def test_water_loss_gap_is_known_and_bounded(self):
-        # Known gap: the symmetric slab evaporates from both faces, while the
-        # real dough sat in a glass mould open only on top. Today ~21 g vs 15 g.
+    def test_water_loss_matches_with_sealed_glass_bottom(self):
+        # With the glass-dish bottom the slab evaporates only from its top,
+        # as in the experiment (~14.5 g vs 15.0 g measured). Modelled as a
+        # symmetric open slab it was ~21 g.
         r = simulate(self.case)
         lost_g = r['summary']['total_g'] * r['summary']['mass_loss_pct'] / 100
         measured = CASES[self.case]['measured']['water_lost_g']
-        self.assertGreater(lost_g, 0.8 * measured)
-        self.assertLess(lost_g, 1.6 * measured)
+        self.assertAlmostEqual(lost_g, measured, delta=0.2 * measured)
 
 
 class SteamTransportPhysics(unittest.TestCase):

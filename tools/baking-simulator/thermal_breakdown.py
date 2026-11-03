@@ -50,7 +50,14 @@ def annotate_high_heat(result: dict, recipe: dict) -> dict:
     if not frames: return result
     frac = recipe['fraction']; total = recipe['total_g']
     n = len(frames[0].get('temp_profile',[])) or 1
-    pools = [{key:total*frac[key]/n for key in ORGANICS} for _ in range(n)]
+    meta = result.get('metadata', {})
+    weights = meta.get('cell_mass_fraction')
+    if not weights or len(weights) != n:
+        weights = [1.0/n]*n  # equal-mass cells (slab, liquids)
+    exposures = meta.get('cell_air_exposure')
+    if not exposures or len(exposures) != n:
+        exposures = None
+    pools = [{key:total*frac[key]*weights[j] for key in ORGANICS} for j in range(n)]
     chars = [0.0]*n
     light_products = [0.0]*n  # retained lighter thermal-cleavage products
     minerals_g = total*frac['ash']
@@ -118,8 +125,12 @@ def annotate_high_heat(result: dict, recipe: dict) -> dict:
                 organic_volatile += release
 
                 air = clamp(result['settings'].get('air_access_pct',100)/100.)
-                accessibility = (1.0 if 'liquid_mode' in result['summary'] or n==1
-                                  else (0.15+0.85*(j/(n-1))**1.3)) * air
+                if 'liquid_mode' in result['summary'] or n == 1:
+                    accessibility = air
+                elif exposures is not None:
+                    accessibility = exposures[j] * air
+                else:
+                    accessibility = (0.15+0.85*(j/(n-1))**1.3) * air
                 oxidation_rate = min(.09,.00040
                     * math.exp(clamp((temperature-430.)/58.,-25,5))
                     * sigmoid((temperature-340.)/22.))*exposure*accessibility
@@ -140,14 +151,14 @@ def annotate_high_heat(result: dict, recipe: dict) -> dict:
         chemical_conversion = 100*(initial_organics-intact)/max(initial_organics,1e-9) if initial_organics>0 else 0.0
         if initial_fat>.01 and fat_crossing_10_min is None and fat_total_conversion>=10.0:
             fat_crossing_10_min=frame['minute']
-            fat_crossing_10_food_c=sum(temps)/len(temps)
+            fat_crossing_10_food_c=sum(t*w for t, w in zip(temps, weights))
         if initial_organics>.01 and total_organic_crossing_10_min is None and chemical_conversion>=10.0:
             total_organic_crossing_10_min=frame['minute']
         original_mass=max(1e-9,total-total*frame['mass_loss_pct']/100.0)
         guessed_residue_depth=frame.get('liquid_depth_mm',0.0)*clamp(retained/original_mass)
         if initial_fat>0 and crossing_min is None and pct_cracked>=1.0:
             crossing_min = frame['minute']
-            crossing_material_c = sum(temps)/len(temps)  # estimated food temperature, not universal onset
+            crossing_material_c = sum(t*w for t, w in zip(temps, weights))  # mass-weighted food temperature, not universal onset
         if retained<0.01:
             stage='empty / trace'
         elif current_water > .35*retained:

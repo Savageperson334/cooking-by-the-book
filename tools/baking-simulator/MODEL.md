@@ -1,4 +1,4 @@
-# BakeLab 0.10.0 — Model specification and evidence
+# BakeLab 0.11.0 — Model specification and evidence
 
 *Sections below are labelled by the version that introduced them; the core heat/moisture description originated in v0.2.*
 
@@ -40,7 +40,27 @@ k_ec = D_eff · L_v · dρ_v,sat/dT · g(water fraction)
 
 where `ρ_v,sat` is the saturated vapour density (ideal gas, Antoine pressure). `g` fades the term out between 6 % and 1 % local water, so dry crust does not carry it. The share of each face's heat flow due to `k_ec` is accompanied by the matching water mass (`q_ec·Δt/L_v`), moved from the warm cell to the cool cell. The latent heat is therefore counted once, water is conserved, the outer layers dry into a crust, and the crumb gains a little moisture, as observed in real loaves.
 
-`D_eff = 4.6×10⁻⁵ m²/s` was fitted to **one** published loaf: the centre reaches 97 °C at ~25 min (Papasidero et al.). A second published bake (Zhang et al. 2025) was kept out of the fit and is predicted within about 2 min for centre timing. Water loss on that bake is still ~38 % high, likely because the model treats the dough as a slab evaporating from both faces while the real dough sat in a glass mould. See [research/reference-bakes.md](../../research/reference-bakes.md). The fitted value is close to water vapour's free-air diffusivity, so it should be read as an effective parameter that also absorbs geometry and microstructure effects.
+`D_eff = 4.4×10⁻⁵ m²/s` (refitted in 0.11.0 with the loaf on its real rack) was fitted to **one** published loaf: the centre reaches 97 °C at ~25 min (Papasidero et al.). A second published bake (Zhang et al. 2025) was kept out of the fit and is predicted within about 2 min for centre timing. With its glass-dish bottom (0.11.0) the water loss on that bake matches within about 3 %. See [research/reference-bakes.md](../../research/reference-bakes.md). The fitted value is close to water vapour's free-air diffusivity, so it should be read as an effective parameter that also absorbs geometry and microstructure effects.
+
+### Shapes and pan / support contact (v0.11.0)
+
+The same 1D finite-volume equations run in three coordinate systems ([`geometry.py`](geometry.py)):
+
+- **slab**: heat flows through the thickness; the area per cell is constant.
+- **cylinder**: radial heat flow in a long loaf (baguette); face area ∝ r.
+- **sphere**: radial heat flow in a roll or boule; face area ∝ r².
+
+Gas expansion scales the slab's thickness on a fixed footprint, or the cylinder's or sphere's radius. Cell volumes give each cell's mass share, which the high-heat post-processor now uses.
+
+A slab can have a different **bottom** from its top. It is then solved over its full thickness, bottom to top, instead of centre to surface:
+
+- **none**: both faces open and identical, the legacy symmetric half-slab.
+- **rack + baking paper**: an open bottom with 95 % of the top's heat transfer and 35 % of its evaporation. Both factors are assumptions.
+- **solid pan / stone / steel**: the pan is an extra lumped temperature node in the implicit system. It exchanges heat with the oven through its underside (convection plus radiation scaled by its emissivity) and with the dough through a contact conductance. Half the plate's own conduction resistance sits in series on each side. The dough's bottom face is sealed (no evaporation). Stones, steels and cast iron start at oven temperature (preheated); trays and glass start at 22 °C.
+
+Pan density, heat capacity, conductivity and emissivity are handbook values for the material. Dough–pan contact conductance (250–300 W m⁻² K⁻¹) is an assumption. A tin's side walls are not modelled, and round shapes ignore pans.
+
+When both faces are made identical, the full-thickness solver reproduces the symmetric solver; this is checked in `tests/test_geometry.py`. A slab with a non-symmetric bottom also reports `bottom_c`, `pan_c`, `bottom_browning_index` and `coldest_c`.
 
 ## Moisture model
 

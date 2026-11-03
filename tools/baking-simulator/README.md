@@ -1,6 +1,6 @@
 # BakeLab — experimental browser baking simulator
 
-**Running prototype v0.9.4 · engine 0.10.0** in the [Cooking by the Book](../../README.md) experiment toolkit.
+**Running prototype v0.11.0** in the [Cooking by the Book](../../README.md) experiment toolkit.
 
 [Open browser app](index.html) · [Scientific methods and limitations](MODEL.md) · [Python engine](engine.py) · [20-ingredient catalogue](ingredients.json)
 
@@ -191,3 +191,26 @@ The dough solver now includes an **evaporation–condensation ("heat pipe") term
 | Thin layer: water lost | 15.0 g | 21.4 g | 20.7 g |
 
 Crust still forms: outer layers dry and heat past 100 °C. The crumb also gains a little moisture, as in real loaves. Water loss on the thin glass-mould bake remains too high (see the [reference bakes](../../research/reference-bakes.md) note). The interface build (`?ui=0.9.4`) is unchanged; only the Python engine and its version tag changed.
+
+
+## v0.11.0 — shapes and pans
+
+The **Process** tab now has two new choices:
+
+- **Shape:** flat slab, long cylinder (baguette) or ball (roll / boule). For the round shapes the depth slider is the diameter.
+- **Pan / support** (slab only):
+  - none, which is the old behaviour with both faces open
+  - wire rack + baking paper
+  - light aluminium sheet
+  - dark steel pan
+  - glass dish
+  - preheated cast iron
+  - preheated baking stone
+  - preheated baking steel
+
+A solid pan is solved as its own temperature. It heats from the oven according to its material and colour, then passes heat into the dough's bottom, which no longer loses water there. The Results tab then shows the bottom, pan and coldest-point temperatures and a separate bottom browning index. The cross-section runs bottom → top.
+
+The pans rank as bakers would expect: preheated steel and stone heat the bottom fastest, then dark steel, then glass, with shiny aluminium slowest. Re-entering the two [reference bakes](../../research/reference-bakes.md) with their real supports refitted the steam term on the round loaf (rack). The held-out glass-dish bake's water loss now matches: 14.5 g against 15.0 g measured, where it was 20.7 g.
+
+Python files and `ingredients.json` are now fetched with the same `?ui=` release tag as the page, so a new release never runs a cached older engine.
+
