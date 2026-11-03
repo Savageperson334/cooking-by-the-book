@@ -11,7 +11,7 @@ import json
 import math
 from typing import Any
 
-VERSION = "0.9.1"
+VERSION = "0.9.2"
 from liquids import liquid_kind, simulate_liquid
 from thermal_breakdown import annotate_high_heat
 from physical_fracture import annotate_fracture

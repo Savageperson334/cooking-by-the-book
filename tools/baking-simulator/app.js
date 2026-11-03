@@ -186,6 +186,11 @@ function renderResult(){
     $('thermal-ash').textContent=fmt(summary.estimated_ash_g ?? 0,2)+' g';
     $('thermal-crack').textContent=fmt(summary.physical_crack_risk_pct ?? 0,1)+' / 100';
     $('thermal-chem').textContent=fmt(summary.estimated_triglyceride_cracked_g ?? 0,2)+' g ('+fmt(summary.estimated_triglyceride_cracked_pct ?? 0,1)+'% of fat)';
+    $('fracture-damage').textContent=fmt(summary.fracture_damage_pct ?? 0,1)+' / 100';
+    $('fracture-stress').textContent=fmt(summary.fracture_stress_ratio_proxy ?? 0,2)+' (relative)';
+    $('chem-conversion').textContent=fmt(summary.chemical_conversion_pct ?? 0,1)+' %';
+    $('fat-conversion').textContent=fmt(summary.fat_thermal_conversion_pct ?? 0,1)+' %';
+    $('fat-onset').textContent=summary.fat_conversion_10pct_min == null?'not reached':fmt(summary.fat_conversion_10pct_min,1)+' min at '+bothTemps(summary.fat_conversion_10pct_material_c);
     $('thermal-fragments').textContent=fmt(summary.estimated_light_fragments_g ?? 0,2)+' g';
     $('thermal-remain').textContent=fmt(summary.estimated_remaining_mass_g ?? summary.end_mass_g,2)+' g';
   }drawChart();updateScrub(100);renderComparison();
@@ -522,6 +527,9 @@ function drawChart(){
  else if(metric==='survival')lines=[['estimated_intact_organic_g','Intact organics · g',colors.center],['estimated_char_g','Char · g',colors.surface],['estimated_ash_g','Minerals · g',colors.mid]];
  else if(metric==='fracture')lines=[['physical_crack_risk_pct','Physical fissure risk · proxy %',colors.surface]];
  else if(metric==='chemcrack')lines=[['estimated_triglyceride_cracked_pct','Fat cleavage · estimated %',colors.surface]];
+ else if(metric==='cracking')lines=[['fracture_damage_pct','Accumulated damage · proxy %',colors.surface],['visible_fracture_pct','Visible fissures · proxy %',colors.mid]];
+ else if(metric==='chemistry')lines=[['chemical_conversion_pct','Organics converted · proxy %',colors.surface]];
+ else if(metric==='fatbreak')lines=[['fat_thermal_conversion_pct','Total fat converted · proxy %',colors.surface],['estimated_triglyceride_cracked_pct','Cleavage subset · proxy %',colors.mid]];
  else if(metric==='rise')lines=[['rise_pct','Estimated expansion',colors.center]];
  else if(metric==='gas')lines=[['co2_generated_g','CO₂ generated, g',colors.surface],['co2_retained_g','CO₂ retained, g',colors.mid]];
  else if(['liquid','concentration','hydration','residue'].includes(metric)){
@@ -616,7 +624,7 @@ function renderComparison(){const a=snapshots.A,b=snapshots.B;if(!a&&!b){$('comp
  $('comparison').replaceChildren(table);
 }
 function download(name,text,contentType){const blob=new Blob([text],{type:contentType});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-function exportCSV(){if(!last)return;const arr=last.result.timeline;const keys=['estimated_remaining_mass_g','estimated_total_mass_loss_pct','estimated_intact_organic_g','estimated_char_g','estimated_ash_g','physical_crack_risk_pct','physical_shrinkage_drive','physical_gradient_drive','estimated_triglyceride_cracked_g','estimated_triglyceride_cracked_pct','estimated_light_fragments_g','estimated_light_fragments_released_g','crack_risk_index_pct','thermal_stage','minute','center_c','mid_c','surface_c','mass_loss_pct','center_moisture_pct','surface_moisture_pct','starch_progress_pct','protein_progress_pct','browning_index','rise_pct','thickness_mm_est','co2_generated_g','co2_retained_g','liquid_depth_mm','liquid_volume_ml','water_remaining_g','sugar_concentration_pct','milk_skin_index_pct','oil_layer_mm','separation_index_pct','solids_fraction_pct','free_water_g','bound_water_proxy_g','oat_hydration_index_pct','residue_browning_index','residue_state'];const rows=[keys.join(','),...arr.map(o=>keys.map(k=>o[k]??'').join(','))];download('bakelab-timeseries.csv',rows.join('\n'),'text/csv');}
+function exportCSV(){if(!last)return;const arr=last.result.timeline;const keys=['estimated_remaining_mass_g','estimated_total_mass_loss_pct','estimated_intact_organic_g','estimated_char_g','estimated_ash_g','physical_crack_risk_pct','physical_shrinkage_drive','physical_gradient_drive','estimated_triglyceride_cracked_g','estimated_triglyceride_cracked_pct','chemical_conversion_pct','fat_thermal_conversion_pct','fracture_damage_pct','visible_fracture_pct','fracture_stress_ratio_proxy','fracture_strain_proxy_pct','estimated_light_fragments_g','estimated_light_fragments_released_g','crack_risk_index_pct','thermal_stage','minute','center_c','mid_c','surface_c','mass_loss_pct','center_moisture_pct','surface_moisture_pct','starch_progress_pct','protein_progress_pct','browning_index','rise_pct','thickness_mm_est','co2_generated_g','co2_retained_g','liquid_depth_mm','liquid_volume_ml','water_remaining_g','sugar_concentration_pct','milk_skin_index_pct','oil_layer_mm','separation_index_pct','solids_fraction_pct','free_water_g','bound_water_proxy_g','oat_hydration_index_pct','residue_browning_index','residue_state'];const rows=[keys.join(','),...arr.map(o=>keys.map(k=>o[k]??'').join(','))];download('bakelab-timeseries.csv',rows.join('\n'),'text/csv');}
 function drawPlaceholderScene(){const svg=$('bake-scene'); if(!svg) return; svg.setAttribute('viewBox',window.matchMedia('(max-width:920px)').matches?'115 75 530 200':'0 0 760 300'); svg.replaceChildren(); svg.append(svgEl('rect',{x:0,y:0,width:760,height:300,fill:'#10181c'})); svg.append(svgEl('rect',{x:52,y:36,width:656,height:228,rx:18,fill:'rgba(18,27,31,.98)',stroke:'#34474d','stroke-width':2})); svgText(svg,{x:380,y:138,'text-anchor':'middle',class:'scene-label'},'Run a formula to render the bake viewport'); svgText(svg,{x:380,y:160,'text-anchor':'middle',class:'scene-subtle'},'The pan, loaf/batter shape, crust colour and warning behaviour update with the simulation.');}
 
 

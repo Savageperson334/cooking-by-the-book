@@ -56,6 +56,9 @@ def annotate_high_heat(result: dict, recipe: dict) -> dict:
     minerals_g = total*frac['ash']
     initial_organics = sum(total*frac[k] for k in ORGANICS)
     initial_fat = total*frac['fat']
+    fat_crossing_10_min = None
+    fat_crossing_10_food_c = None
+    total_organic_crossing_10_min = None
     organic_volatile = 0.0
     char_oxidized = 0.0
     chemical_feedstock_cracked = 0.0
@@ -131,6 +134,16 @@ def annotate_high_heat(result: dict, recipe: dict) -> dict:
         retained = max(0.,current_water+minerals_g+intact+char_g+intermediate_g)
         loss = max(0.,total-retained)
         pct_cracked = 100*chemical_feedstock_cracked/max(initial_fat,1e-9) if initial_fat>0 else 0.0
+        fat_remaining = sum(pool['fat'] for pool in pools)
+        fat_total_conversion = 100*(initial_fat-fat_remaining)/max(initial_fat,1e-9) if initial_fat>0 else 0.0
+        chemical_conversion = 100*(initial_organics-intact)/max(initial_organics,1e-9) if initial_organics>0 else 0.0
+        if initial_fat>.01 and fat_crossing_10_min is None and fat_total_conversion>=10.0:
+            fat_crossing_10_min=frame['minute']
+            fat_crossing_10_food_c=sum(temps)/len(temps)
+        if initial_organics>.01 and total_organic_crossing_10_min is None and chemical_conversion>=10.0:
+            total_organic_crossing_10_min=frame['minute']
+        original_mass=max(1e-9,total-total*frame['mass_loss_pct']/100.0)
+        guessed_residue_depth=frame.get('liquid_depth_mm',0.0)*clamp(retained/original_mass)
         if initial_fat>0 and crossing_min is None and pct_cracked>=1.0:
             crossing_min = frame['minute']
         if retained<0.01:
@@ -148,6 +161,10 @@ def annotate_high_heat(result: dict, recipe: dict) -> dict:
         else:
             stage='wet / setting'
         frame.update({
+            'estimated_residue_depth_mm':round(guessed_residue_depth,4),
+            'chemical_conversion_pct':round(chemical_conversion,3),
+            'fat_thermal_conversion_pct':round(fat_total_conversion,3),
+            'fat_intact_g':round(fat_remaining,4),
             'estimated_remaining_mass_g':round(retained,4),
             'estimated_total_mass_loss_pct':round(100*loss/total,3),
             'estimated_intact_organic_g':round(intact,4),
@@ -171,9 +188,13 @@ def annotate_high_heat(result: dict, recipe: dict) -> dict:
                 'estimated_char_pct_of_initial_organics',
                 'estimated_triglyceride_cracked_g','estimated_triglyceride_cracked_pct',
                 'estimated_light_fragments_g','estimated_light_fragments_released_g',
-                'thermal_stage'):
+                'thermal_stage', 'estimated_residue_depth_mm',
+                'chemical_conversion_pct','fat_thermal_conversion_pct','fat_intact_g'):
         result['summary'][key]=last[key]
     result['summary']['estimated_cracking_1pct_crossing_min'] = (None if crossing_min is None else round(crossing_min,2))
+    result['summary']['fat_conversion_10pct_min']=None if fat_crossing_10_min is None else round(fat_crossing_10_min,2)
+    result['summary']['fat_conversion_10pct_material_c']=None if fat_crossing_10_food_c is None else round(fat_crossing_10_food_c,1)
+    result['summary']['organic_conversion_10pct_min']=None if total_organic_crossing_10_min is None else round(total_organic_crossing_10_min,2)
     if max(f['surface_c'] for f in frames)>=200:
         result['warnings'].append(
             'Upper-end decomposition and triglyceride cracking are POST-PROCESSING ESTIMATES: '

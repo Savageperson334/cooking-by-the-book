@@ -50,15 +50,24 @@ def annotate_fracture(result:dict,recipe:dict)->dict:
         drying_fraction=max(0.,prior_water-current_water)/max(water_start,1e-9) if water_start>0 else 0.
         # Dimensionless stress-drive is accumulated from differential shrinkage
         # and thermal/moisture gradients. Constants are not measured moduli.
-        cumulative_shrink += structure*dry_gate*hot_gate*(3.2*drying_fraction+dt*1.8e-5*wet_gradient)
+        cumulative_shrink += structure*dry_gate*hot_gate*(6.3*drying_fraction+dt*1.8e-5*wet_gradient)
         cumulative_thermal += structure*dry_gate*hot_gate*(dt*3.5e-7*gradient)
         raw_index=100*(1-math.exp(-(cumulative_shrink+cumulative_thermal)))
         remaining_org=frame.get('estimated_intact_organic_g',organics_start)+frame.get('estimated_char_g',0.)
         surviving=clamp(remaining_org/max(organics_start*.07,1e-8)) if organics_start>0 else 0.
         physical_index=raw_index*surviving
-        if crossing is None and physical_index>=50: crossing=minute
+        # Compatibility with v0.9's independent damage vs visible fissure
+        # indicators. Damage may persist while the material is later consumed;
+        # visible fissures cease to be meaningful when little structure remains.
+        screening_stress_ratio=max(0.0,cumulative_shrink+cumulative_thermal)
+        strain_proxy_pct=100*0.03*screening_stress_ratio
+        if crossing is None and physical_index>=20: crossing=minute
         frame.update({
             'physical_crack_risk_pct':round(physical_index,3),
+            'visible_fracture_pct':round(physical_index,3),
+            'fracture_damage_pct':round(raw_index,3),
+            'fracture_stress_ratio_proxy':round(screening_stress_ratio,4),
+            'fracture_strain_proxy_pct':round(strain_proxy_pct,4),
             'physical_shrinkage_drive':round(cumulative_shrink,4),
             'physical_gradient_drive':round(cumulative_thermal,4),
             'physical_moisture_contrast_pct':round(100*wet_gradient,3),
@@ -68,7 +77,8 @@ def annotate_fracture(result:dict,recipe:dict)->dict:
         prior_water=current_water
         prev_min=minute
     end=frames[-1]
-    for key in ('physical_crack_risk_pct','physical_shrinkage_drive',
+    for key in ('physical_crack_risk_pct','visible_fracture_pct','fracture_damage_pct',
+                'fracture_stress_ratio_proxy','fracture_strain_proxy_pct','physical_shrinkage_drive',
                 'physical_gradient_drive','physical_moisture_contrast_pct','crack_risk_index_pct'):
         result['summary'][key]=end[key]
     result['summary']['physical_crack_proxy_50pct_crossing_min']=None if crossing is None else round(crossing,2)
@@ -77,6 +87,6 @@ def annotate_fracture(result:dict,recipe:dict)->dict:
         result['warnings'].append(
             'Physical fracture: model uses drying/shrinkage and temperature/moisture-gradient stress drives, '
             'NOT tensile strength, adhesion, fracture energy, or a measured crack point. '
-            '50-point crossing (if any) is an arbitrary risk-index threshold.')
+            '20-point crossing (if any) is an arbitrary risk-index threshold.')
     result['metadata']['physical_fracture']='Uncalibrated drying and thermal-stress screening; no fracture mechanics solver.'
     return result
