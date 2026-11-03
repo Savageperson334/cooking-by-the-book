@@ -11,7 +11,7 @@ const ingredientVisuals={
   cornstarch:'#ece9dd',vital_gluten:'#d9c7a0',cocoa:'#5c3b2a'
 };
 const categories=['Grains','Liquids','Fats','Sweeteners','Leavening & salts','Starches & proteins'];
-const defaults={oven_c:220,minutes:35,thickness_mm:80,initial_c:22,steam_pct:5,fan:0,proof_minutes:60,proof_c:26};
+const defaults={oven_c:220,minutes:35,thickness_mm:80,initial_c:22,steam_pct:5,fan:0,proof_minutes:60,proof_c:26,air_access_pct:100};
 const cToF=c=>c*9/5+32;
 const fToC=f=>(f-32)*5/9;
 const bothTemps=c=>`${fmt(c,1)} °C / ${fmt(cToF(c),1)} °F`;
@@ -42,7 +42,8 @@ const settingDefs=[
   ['thickness_mm','Initial sample depth','mm',2,250,1],
   ['initial_c','Initial dough temperature','°C',-20,100,1],
   ['steam_pct','Oven water vapour level','%*',0,100,1],
-  ['fan','Forced-air oven','0 / 1',0,1,1]
+  ['fan','Forced-air oven','0 / 1',0,1,1],
+  ['air_access_pct','Air access for char oxidation (proxy)','%',0,100,1]
 ];
 let catalog=[],amounts={},settings={...defaults},engineReady=false,last=null,requestId=0,renderedId=0,timer=null;
 let snapshots={A:null,B:null};
@@ -133,7 +134,7 @@ function renderSettings(){
       settings[key]=temperature&&temperatureUnit==='F'?fToC(selected):selected;
       present();queueRun();
     });
-    row.append(head,slider);
+    row.append(head,slider);if(key==='air_access_pct')row.append(createElement('div',{class:'subtle',text:'Illustrative char-oxidation exposure only; does not model oxygen flow, flames or fire risk.'}));
     if(key==='thickness_mm')row.append(createElement('div',{class:'subtle',text:'For liquids, the starting depth in an open pan; for dough, the initial slab thickness before proof.'}));
     if(key==='minutes')row.append(createElement('div',{class:'subtle',text:'Extended to 24 hours for stress testing; extreme durations are not safe-cooking recommendations.'}));
     if(key==='oven_c')row.append(createElement('div',{class:'subtle',text:'Extended to 600°C / 1112°F. Beyond ordinary ovens, these are numerical stress tests only.'}));
@@ -155,6 +156,18 @@ function renderResult(){
   const boxes=$('metrics').children;
   const vals=[[bothTemps(s.center_c),'Centre temperature'],[bothTemps(s.surface_c),'Surface temperature'],[fmt(s.mass_loss_pct,2)+' %','Of initial mass'],[fmt(s.browning_index,2),'Relative index · uncalibrated'],[fmt(s.rise_pct,2)+' %','Volume proxy · uncalibrated'],[fmt(s.co2_generated_g,3)+' g','CO₂ potential estimate']];
   vals.forEach((pair,i)=>{boxes[i].querySelector('strong').textContent=pair[0];boxes[i].querySelector('small').textContent=pair[1];});
+  $('thermal-remain').textContent=fmt(s.estimated_remaining_mass_g,2)+' g';
+  $('thermal-organic').textContent=fmt(s.estimated_intact_organic_g,2)+' g';
+  $('thermal-char').textContent=fmt(s.estimated_char_g,2)+' g';
+  $('thermal-ash').textContent=fmt(s.estimated_ash_g,2)+' g';
+  $('thermal-stage').textContent=s.thermal_stage;
+  $('thermal-crack').textContent=s.crack_risk_onset_min===null?'Not reached':`~${fmt(s.crack_risk_onset_min,1)} min / ${bothTemps(s.physical_fracture_onset_surface_c)} (proxy)`;
+  $('fracture-damage').textContent=fmt(s.fracture_damage_pct,1)+' % (cumulative proxy)';
+  $('fracture-stress').textContent=fmt(s.fracture_stress_ratio_proxy,2)+' × (dimensionless)';
+  $('chem-conversion').textContent=fmt(s.chemical_conversion_pct,1)+' % of initial organics';
+  $('fat-conversion').textContent=s.fat_pct>0 ? fmt(s.fat_thermal_conversion_pct,1)+' % of initial fat' : 'No fat in recipe';
+  $('fat-onset').textContent=s.fat_pct<=0?'Not applicable':s.fat_conversion_10pct_min===null?'Not reached':`~${fmt(s.fat_conversion_10pct_min,1)} min at ~${bothTemps(s.fat_conversion_10pct_material_c)}`;
+
   const segments=['water','starch','protein','fat','sugar','fiber','ash'];
   const comp=r.summary, proportions={water:comp.water_pct,starch:comp.starch_pct,protein:comp.protein_pct,fat:comp.fat_pct,sugar:comp.sugar_pct,fiber:comp.fiber_pct,ash:comp.ash_pct};
   let allocated=0;
@@ -250,7 +263,7 @@ function visualDescriptor(frame){
   const domed = rise>12 && !liquidish;
   const overexpanded = rise>60 && (protein<0.11 || wetness>0.68);
   const collapsed = overexpanded && (surface>165 || frame.co2_retained_g < frame.co2_generated_g*0.55 || massLoss>12);
-  const cracked = (massLoss>8 && surface>135 && !liquidish) || powdery;
+  const cracked = (Number(frame.crack_risk_index_pct||0)>37 && !liquidish && !oily) || (powdery && !liquidMode);
   const burnt = liquidMode ? brown>78 : brown>78 || surface>215;
   const underbaked = center<86 && surface<140;
   const boiling = liquidish && frame.water_remaining_g>0 && surface>=96;
@@ -267,13 +280,23 @@ function visualDescriptor(frame){
   else if(domed) label='Rising and doming';
   else if(underbaked) label='Early bake / structure not set';
   if(fat>0.32 && !oily && !liquidish) label += ' · fatty';
+  const upperStage=frame.thermal_stage||'';
+  const remainingMass=Number(frame.estimated_remaining_mass_g??s.end_mass_g);
+  const maxInitial=Math.max(1e-10,s.total_g||1);
+  const extreme=Number(frame.estimated_volatile_loss_g||0)+Number(frame.estimated_char_oxidation_loss_g||0)>0.03*maxInitial;
+  if(extreme || upperStage==='mineral / ash residue') {
+    if(upperStage==='empty / trace')label='Organic material depleted (estimated)';
+    else if(upperStage==='mineral / ash residue')label='Mostly mineral / ash residue (estimated)';
+    else if(upperStage==='charred')label='Charred material (estimated)';
+    else if(upperStage==='thermally decomposing')label='Thermal breakdown (estimated)';
+  }
   if(liquidMode && frame.water_remaining_g===0 && s.water_pct>0){
     if(fat>0.10) label='Water gone · oil remains';
     else if(s.sugar_pct>15) label='Water gone · sugar residue';
     else if(Number(frame.liquid_depth_mm||0)<0.02) label='Water evaporated · empty pan';
     else label='Water gone · concentrated residue';
   }
-  if(liquidMode==='suspension'){
+  if(liquidMode==='suspension' && !extreme && upperStage!=='mineral / ash residue'){
     const material=ingredientAmount('banana')>ingredientAmount('oats')?'banana':'oats';
     label=residueState==='scorched'?`${material} · scorched residue`:residueState==='dry residue'?`${material} · drying/toasting`:residueState==='paste'?`${material} · thickening paste`:`${material} · soaking slurry`;
   }
@@ -287,7 +310,8 @@ function visualDescriptor(frame){
   else if(liquidish) note='High free-water formula: the viewport stays shallow and glossy, and the pool visibly recedes as evaporation increases.';
   else if(powdery) note='Low-water extreme: poor cohesion, little expansion and a rough, cracked top.';
   else if(burnt) note='The browning index is high, so the viewport darkens and exaggerates crust contrast.';
-  return {water,fat,protein,sugar,starch,wetness,richness,dryness,liquidMode,residueState,isResidue,isDryResidue,biphasic,liquidish,powdery,oily,sugary,salty,cakey,domed,overexpanded,collapsed,cracked,burnt,underbaked,boiling,label,note,saltRatio,yeastRatio,bpRatio,rise,brown,surface,center,massLoss};
+  if(extreme || upperStage==='mineral / ash residue')note=`Illustrative high-heat accounting: ${fmt(remainingMass,2)} g material left, ${fmt(frame.estimated_char_g,2)} g char, ${fmt(frame.estimated_ash_g,2)} g mineral residue. NOT a fire or measured breakdown prediction.`;
+  return {upperStage,extreme,remainingMass,water,fat,protein,sugar,starch,wetness,richness,dryness,liquidMode,residueState,isResidue,isDryResidue,biphasic,liquidish,powdery,oily,sugary,salty,cakey,domed,overexpanded,collapsed,cracked,burnt,underbaked,boiling,label,note,saltRatio,yeastRatio,bpRatio,rise,brown,surface,center,massLoss};
 }
 function drawBakeScene(frame){
   const svg=$('bake-scene'); if(!svg || !last) return; svg.replaceChildren();
@@ -322,8 +346,10 @@ function drawBakeScene(frame){
   if(d.collapsed) crown*=0.22;
   if(d.liquidMode || d.oily || d.sugary) crown=0;
   const spill=Math.max(0, 128-topY);
-  const crust=d.liquidMode ? (d.liquidish?toneColor(visual.top,'#fefefe',0.05):toneColor(visual.top, d.burnt?'#1b0e09':'#8b512e',clamp(d.brown/100,0,1)*0.92)) : toneColor(visual.top, d.burnt?'#261713':'#8f5831',clamp((d.brown/100)+(d.surface-120)/150,0,1)*0.45);
-  const crumb=(d.oily?toneColor(visual.base,'#715428',0.18):d.liquidish?toneColor(visual.base,'#ece1bf',0.04):d.sugary?toneColor(visual.base,'#8a552b',0.12):toneColor(visual.base,'#c79162', clamp((d.brown/140)+d.fat*0.55,0,1)*0.25));
+  let crust=d.liquidMode ? (d.liquidish?toneColor(visual.top,'#fefefe',0.05):toneColor(visual.top, d.burnt?'#1b0e09':'#8b512e',clamp(d.brown/100,0,1)*0.92)) : toneColor(visual.top, d.burnt?'#261713':'#8f5831',clamp((d.brown/100)+(d.surface-120)/150,0,1)*0.45);
+  let crumb=(d.oily?toneColor(visual.base,'#715428',0.18):d.liquidish?toneColor(visual.base,'#ece1bf',0.04):d.sugary?toneColor(visual.base,'#8a552b',0.12):toneColor(visual.base,'#c79162', clamp((d.brown/140)+d.fat*0.55,0,1)*0.25));
+  if(d.upperStage==='mineral / ash residue'){crust='#a8a79d';crumb='#777970';}
+  else if(d.upperStage==='charred'){crust='#282421';crumb='#38302a';}
   const panTopFace=`${panL},${panTop} ${panR},${panTop} ${panR+panDepth},${panTop-panDepth} ${panL+panDepth},${panTop-panDepth}`;
   const panFront=`${panL},${panTop} ${panR},${panTop} ${panR},${panTop+panHeight} ${panL},${panTop+panHeight}`;
   const panSide=`${panR},${panTop} ${panR+panDepth},${panTop-panDepth} ${panR+panDepth},${panTop+panHeight-panDepth} ${panR},${panTop+panHeight}`;
@@ -335,7 +361,7 @@ function drawBakeScene(frame){
   if(d.liquidMode){
     // Absolute starting depth drives pan footprint in Python. The display
     // uses the *same* remaining-depth ratio; no minimum liquid-height floor.
-    const depthRatio=clamp(Number(frame.liquid_depth_mm||0)/Math.max(1e-9,last.result.settings.thickness_mm),0,1);
+    const depthRatio=clamp(Number(frame.estimated_residue_depth_mm??frame.liquid_depth_mm??0)/Math.max(1e-9,last.result.settings.thickness_mm),0,1);
     const drawFill=fillBase*depthRatio;
     topY=panTop+panHeight-9-(panHeight-8)*drawFill;
   }
@@ -348,7 +374,7 @@ function drawBakeScene(frame){
   if(d.isDryResidue || d.powdery) topPath=`M ${leftInner} ${topBase+3} C ${cp1} ${topBase-crown*0.2-4} ${cp2} ${topBase-crown*0.15+9} ${rightInner} ${topBase+1}`;
   const frontPath=`${topPath} L ${rightInner} ${panTop+panHeight-9} L ${leftInner} ${panTop+panHeight-9} Z`;
   const backPath=`M ${leftInner+backLift} ${topBase-backLift} C ${cp1+backLift} ${topBase-crown+ripple-backLift} ${cp2+backLift} ${topBase-crown+ripple+sag-backLift} ${rightInner+backLift} ${topBase-backLift} L ${rightInner+backLift} ${panTop+panHeight-9-backLift} L ${leftInner+backLift} ${panTop+panHeight-9-backLift} Z`;
-  const containsMaterial = !d.liquidMode || Number(frame.liquid_depth_mm||0)>0.01;
+  const containsMaterial = Number(frame.estimated_remaining_mass_g??last.result.summary.end_mass_g)>0.025 && (!d.liquidMode || Number(frame.estimated_residue_depth_mm??frame.liquid_depth_mm??0)>0.002);
   if(containsMaterial){
   svg.append(svgEl('path',{d:backPath,fill:blendColor(crumb,'#ffffff',0.12),opacity:0.42}));
   svg.append(svgEl('path',{d:frontPath,fill:crumb,class:'scene-outline'}));
@@ -433,13 +459,26 @@ function drawBakeScene(frame){
   if(d.oily){
     for(let i=0;i<4;i++) svg.append(svgEl('path',{d:`M ${leftInner+35+i*78} ${topBase+4+(i%2)*2} q 18 -4 36 0`,stroke:visual.glaze,fill:'none','stroke-width':3,'stroke-linecap':'round',opacity:'0.9'}));
   }
-  if(d.cracked && !d.liquidMode){
-    const crackCount=d.powdery?5:3;
+  // Distinct PHYSICAL surface fissures, driven by a drying/thermal stress
+  // proxy (not molecular cracking, which removes mass instead).
+  const visibleFracture=clamp(Number(frame.visible_fracture_pct||0),0,100);
+  if(visibleFracture>12 && (!d.liquidMode || d.isDryResidue) && !d.oily &&
+      !['mineral / ash residue','empty / trace'].includes(d.upperStage)){
+    const crackCount=Math.min(9,Math.max(1,Math.floor(visibleFracture/11)));
+    const strength=clamp(visibleFracture/100,0,1);
     for(let i=0;i<crackCount;i++){
-      const x=leftInner+50+i*(rightInner-leftInner-100)/Math.max(1,crackCount-1);const y=topBase-crown*0.35 + (i%2)*6;
-      svg.append(svgEl('path',{d:`M ${x} ${y} q -8 7 -14 16 q 10 6 4 15`,class:'scene-crack','stroke-width':2.2}));
+      const u=(i+0.65)/(crackCount+0.35);
+      const x=leftInner+18+u*(rightInner-leftInner-36);
+      const y=topBase-crown*(0.26+0.08*(i%3))+(i%3)*3;
+      const length=7+28*strength+5*(i%3);
+      const dx=(i%2?-1:1)*(5+strength*9);
+      svg.append(svgEl('path',{d:`M ${x} ${y} l ${dx*.24} ${length*.34} l ${-dx*.54} ${length*.33} l ${dx*.44} ${length*.28}`,
+        class:'scene-crack','stroke-width':1.1+2*strength,opacity:clamp(0.3+strength*0.65,0,1)}));
+      if(strength>0.46 && i%2===0) svg.append(svgEl('path',{d:`M ${x+dx*.24} ${y+length*.34} l ${dx*.65} ${length*.25}`,
+        class:'scene-crack','stroke-width':.75+strength,opacity:.64}));
     }
   }
+
   if(!d.liquidMode && (d.cakey || (d.rise>18 && !d.liquidish))){
     const bubbleCount=Math.round(clamp(d.rise/16 + (d.cakey?2:0),2,8));
     for(let i=0;i<bubbleCount;i++){
@@ -476,7 +515,11 @@ function drawChart(){
  let lines;
  if(metric==='temp')lines=[['center_c','Center (°'+temperatureUnit+')',colors.center],['mid_c','Mid-depth (°'+temperatureUnit+')',colors.mid],['surface_c','Surface (°'+temperatureUnit+')',colors.surface]];
  else if(metric==='moisture')lines=[['center_moisture_pct','Center',colors.center],['surface_moisture_pct','Surface',colors.blue||colors.mid]];
- else if(metric==='mass')lines=[['mass_loss_pct','Water lost',colors.surface]];
+ else if(metric==='mass')lines=[['mass_loss_pct','Water lost',colors.surface],['estimated_total_mass_loss_pct','Including estimated breakdown',colors.center]];
+ else if(metric==='survival')lines=[['estimated_remaining_mass_g','Total residue · g',colors.center],['estimated_intact_organic_g','Organic · g',colors.surface],['estimated_char_g','Char · g',colors.mid],['estimated_ash_g','Mineral / ash · g',colors.starch]];
+ else if(metric==='cracking')lines=[['visible_fracture_pct','Visible crust fissures · % proxy',colors.surface],['fracture_damage_pct','Cumulative fracture damage · % proxy',colors.mid]];
+ else if(metric==='chemistry')lines=[['chemical_conversion_pct','Organics decomposed · %',colors.surface],['fat_thermal_conversion_pct','Fat decomposed · %',colors.mid]];
+ else if(metric==='fatbreak')lines=[['fat_thermal_conversion_pct','Fat decomposition · % of initial fat',colors.surface]];
  else if(metric==='rise')lines=[['rise_pct','Estimated expansion',colors.center]];
  else if(metric==='gas')lines=[['co2_generated_g','CO₂ generated, g',colors.surface],['co2_retained_g','CO₂ retained, g',colors.mid]];
  else if(['liquid','concentration','hydration','residue'].includes(metric)){
@@ -538,13 +581,14 @@ function updateScrub(val){if(!last)return;
  if(last.result.summary.liquid_mode){
    materialNote.hidden=false;
    const sugar=Number(frame.sugar_concentration_pct||0);
-   const details=[`${fmt(frame.liquid_depth_mm,2)} mm deep`,`${fmt(frame.liquid_volume_ml,1)} mL left`];
+   const details=[`${fmt(frame.estimated_residue_depth_mm??frame.liquid_depth_mm,2)} mm drawn depth (proxy)`,`${fmt(frame.estimated_remaining_mass_g,2)} g material (est.)`];
    if(Number(frame.oil_layer_mm||0)>0.1)details.push(`oil layer ~${fmt(frame.oil_layer_mm,1)} mm`);
    if(last.result.summary.liquid_mode==='suspension'){
      details.push(`${frame.residue_state||'slurry'}`);
      details.push(`solids ${fmt(frame.solids_fraction_pct,1)}%`);
      details.push(`darkening ${fmt(frame.residue_browning_index,1)} / 100 (estimated)`);
    }else if(sugar>25)details.push(`sugar ${fmt(sugar,1)}% of sugar+water`);
+   if(frame.thermal_stage) details.push(`stage: ${frame.thermal_stage}`);
    materialNote.textContent=details.join(' · ');
    // Colour swatch makes a sub-millimetre residue visible without falsely
    // inflating its calculated height in the pan drawing.
@@ -562,13 +606,13 @@ function updateScrub(val){if(!last)return;
  [['CENTER',frame.center_c,14],['SURFACE',frame.surface_c,620]].forEach((a,i)=>{let text=svgEl('text',{x:a[2],y:119,fill:'#9cafa9','font-size':11});text.textContent=`${a[0]} ${fmt(a[1],1)} °C / ${fmt(cToF(a[1]),1)} °F`;svg.append(text);});
 }
 function renderComparison(){const a=snapshots.A,b=snapshots.B;if(!a&&!b){$('comparison').textContent='Save snapshots using A and B. The numbers are independent model runs, not measurements.';return;}
- const rows=[['Oven (°C)',x=>x.inputs.settings.oven_c],['Bake (min)',x=>x.inputs.settings.minutes],['Proof (min)',x=>x.inputs.settings.proof_minutes],['Water in mix (%)',x=>x.result.summary.water_pct],['Center (°C)',x=>x.result.summary.center_c],['Surface (°C)',x=>x.result.summary.surface_c],['Mass lost (%)',x=>x.result.summary.mass_loss_pct],['Liquid depth (mm)',x=>x.result.summary.liquid_depth_mm??null],['Remaining volume (mL)',x=>x.result.summary.liquid_volume_ml??null],['Water remaining (g)',x=>x.result.summary.water_remaining_g??null],['Rise proxy (%)',x=>x.result.summary.rise_pct],['CO₂ formed (g)',x=>x.result.summary.co2_generated_g],['Browning index',x=>x.result.summary.browning_index],['Residue browning proxy',x=>x.result.summary.residue_browning_index??null]];
+ const rows=[['Oven (°C)',x=>x.inputs.settings.oven_c],['Bake (min)',x=>x.inputs.settings.minutes],['Proof (min)',x=>x.inputs.settings.proof_minutes],['Water in mix (%)',x=>x.result.summary.water_pct],['Center (°C)',x=>x.result.summary.center_c],['Surface (°C)',x=>x.result.summary.surface_c],['Mass lost (%)',x=>x.result.summary.mass_loss_pct],['Liquid depth (mm)',x=>x.result.summary.liquid_depth_mm??null],['Remaining volume (mL)',x=>x.result.summary.liquid_volume_ml??null],['Water remaining (g)',x=>x.result.summary.water_remaining_g??null],['Rise proxy (%)',x=>x.result.summary.rise_pct],['CO₂ formed (g)',x=>x.result.summary.co2_generated_g],['Browning index',x=>x.result.summary.browning_index],['Residue browning proxy',x=>x.result.summary.residue_browning_index??null],['Estimated matter remaining (g)',x=>x.result.summary.estimated_remaining_mass_g],['Estimated char (g)',x=>x.result.summary.estimated_char_g],['Estimated mineral ash (g)',x=>x.result.summary.estimated_ash_g]];
  const table=createElement('table');const head=createElement('tr');['Metric','A','B','Δ B–A'].forEach(x=>head.append(createElement('th',{text:x})));table.append(head);
  for(const [label,get] of rows){const tr=createElement('tr');tr.append(createElement('td',{text:label}));const av=a?get(a):null,bv=b?get(b):null;[av,bv,av!=null&&bv!=null?bv-av:null].forEach(x=>tr.append(createElement('td',{text:x==null?'—':fmt(x,2)})));table.append(tr);}
  $('comparison').replaceChildren(table);
 }
 function download(name,text,contentType){const blob=new Blob([text],{type:contentType});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-function exportCSV(){if(!last)return;const arr=last.result.timeline;const keys=['minute','center_c','mid_c','surface_c','mass_loss_pct','center_moisture_pct','surface_moisture_pct','starch_progress_pct','protein_progress_pct','browning_index','rise_pct','thickness_mm_est','co2_generated_g','co2_retained_g','liquid_depth_mm','liquid_volume_ml','water_remaining_g','sugar_concentration_pct','milk_skin_index_pct','oil_layer_mm','separation_index_pct','solids_fraction_pct','free_water_g','bound_water_proxy_g','oat_hydration_index_pct','residue_browning_index','residue_state'];const rows=[keys.join(','),...arr.map(o=>keys.map(k=>o[k]??'').join(','))];download('bakelab-timeseries.csv',rows.join('\n'),'text/csv');}
+function exportCSV(){if(!last)return;const arr=last.result.timeline;const keys=['minute','center_c','mid_c','surface_c','mass_loss_pct','center_moisture_pct','surface_moisture_pct','starch_progress_pct','protein_progress_pct','browning_index','rise_pct','thickness_mm_est','co2_generated_g','co2_retained_g','liquid_depth_mm','liquid_volume_ml','water_remaining_g','sugar_concentration_pct','milk_skin_index_pct','oil_layer_mm','separation_index_pct','solids_fraction_pct','free_water_g','bound_water_proxy_g','oat_hydration_index_pct','residue_browning_index','residue_state','estimated_remaining_mass_g','estimated_total_mass_loss_pct','estimated_intact_organic_g','estimated_char_g','estimated_ash_g','estimated_volatile_loss_g','estimated_char_oxidation_loss_g','estimated_residue_depth_mm','crack_risk_index_pct','fracture_stress_ratio_proxy','fracture_strain_proxy_pct','fracture_damage_pct','visible_fracture_pct','chemical_conversion_pct','fat_thermal_conversion_pct','fat_intact_g','thermal_stage'];const rows=[keys.join(','),...arr.map(o=>keys.map(k=>o[k]??'').join(','))];download('bakelab-timeseries.csv',rows.join('\n'),'text/csv');}
 function drawPlaceholderScene(){const svg=$('bake-scene'); if(!svg) return; svg.setAttribute('viewBox',window.matchMedia('(max-width:920px)').matches?'115 75 530 200':'0 0 760 300'); svg.replaceChildren(); svg.append(svgEl('rect',{x:0,y:0,width:760,height:300,fill:'#10181c'})); svg.append(svgEl('rect',{x:52,y:36,width:656,height:228,rx:18,fill:'rgba(18,27,31,.98)',stroke:'#34474d','stroke-width':2})); svgText(svg,{x:380,y:138,'text-anchor':'middle',class:'scene-label'},'Run a formula to render the bake viewport'); svgText(svg,{x:380,y:160,'text-anchor':'middle',class:'scene-subtle'},'The pan, loaf/batter shape, crust colour and warning behaviour update with the simulation.');}
 
 

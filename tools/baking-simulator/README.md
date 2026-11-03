@@ -1,6 +1,6 @@
 # BakeLab — experimental browser baking simulator
 
-**Running prototype v0.8** in the [Cooking by the Book](../../README.md) experiment toolkit.
+**Running prototype v0.9** in the [Cooking by the Book](../../README.md) experiment toolkit.
 
 [Open browser app](index.html) · [Scientific methods and limitations](MODEL.md) · [Python engine](engine.py) · [20-ingredient catalogue](ingredients.json)
 
@@ -115,3 +115,21 @@ The new **suspension branch** in [`liquids.py`](liquids.py) is a well-mixed heat
 - The qualitative darkening curve is monotone and lacks oxidation kinetics, moisture-dependent nutrient chemistry, pyrolysis, ash formation, or real colourimetry.
 
 For source literature and modelling gaps, see [MODEL.md](MODEL.md). Tests include extreme-duration/oven runs, pure water no-browning, banana and oat dry-down and small perturbations.
+
+## v0.9: inspect the upper temperature end
+
+The simulator now provides an **explicitly uncalibrated** high-temperature survival diagnostic. Rather than leaving every gram of solids in place forever after evaporation, it post-processes local temperature and moisture histories with composition-specific first-order surrogate rates for organic breakdown, volatile escape, transient char formation, and assumed ambient-air char oxidation. Mineral salts/ash remain as a separate conserved pool. As a qualitative check, a salt-dominant residue behaves differently from sugar, oats, banana and oil at 600°C. Crucially these surrogate rates are not a quantitative model of real pyrolysis, combustion or food safety.
+
+New Results readouts and plots: estimated remaining total mass, intact organics, char, mineral/ash, thermal stage, and a **drying crack-risk index**. This index does not identify a true mechanical failure threshold; shrinkage stress, rheology and adhesion are still missing. The Process tab has an **Air access for char oxidation** control; it scales an illustrative oxidation rate only. It cannot predict ignition, smoke, fire or safe use in oxygen-limited conditions.
+
+The pre-existing heat/moisture mass-loss values remain **water-only baseline outputs**, because the thermal-breakdown diagnostic is not yet fed back into heat transfer, sample geometry or evaporation. Read the independent `estimated_*` values as a stress-test overlay. At extreme temperatures the breakdown curves may be directionally plausible but cannot be trusted quantitatively.
+
+Further reading: [ASABE 2018, Thermal Decomposition of Carbohydrates, Lipids, and Proteins](https://doi.org/10.13031/trans.12494); [Rigaku, edible oil thermal decomposition](https://rigaku.com/products/thermal-analysis/sta/application-notes/b-ta1058-decomposition-behavior-edible-oils-effects-oxidative-degradation); [NIST, sodium chloride melting point](https://srd.nist.gov/NSRDS/NSRDS-NBS61-II.pdf); [banana drying and crack stress](https://doi.org/10.1080/07373937.2023.2280912).
+
+## Two kinds of cracking — high-temperature screening (v0.9)
+
+**Physical fracture:** a normalized, *uncalibrated* drying-stress screening index combines surface/interior moisture mismatch, accumulated surface shrinkage, thermal gradients, gas expansion and composition-dependent cohesion. It records cumulative damage and an estimated **visible fissure** extent, then hides those fissures when little structure remains. Neither a true tensile-strength measurement nor a validated mechanical crack temperature; cooling/checking after baking is omitted.
+
+**Chemical cracking/decomposition:** integrates illustrative time/temperature dependent loss of sugar, starch, protein, fiber and **fat (triglycerides)** into volatile material and possible char. Accessible char can further diminish through an oxidation proxy. The Results panel shows fat conversion and the first point at which **10% of the initial fat** has converted, with the modeled food temperature at that point; these are **not universal cracking, flash or ignition points**. No flames, combustion heat release, smoke chemistry or oxygen transport is simulated. The original water-only energy solutions are unchanged. The chemistry mass accounting is post-processing; no reaction enthalpy feedback is claimed.
+
+At 600°C, reported oven temperature is not food temperature. Temperatures for liquid water remain near boiling while water is present; the matrix may become hotter after drying. All results in this extreme regime are qualitative research stress-tests, not safety guidance.
