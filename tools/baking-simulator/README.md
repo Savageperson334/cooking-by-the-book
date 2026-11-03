@@ -1,8 +1,19 @@
 # BakeLab — experimental browser baking simulator
 
-**Running prototype v0.4** in the [Cooking by the Book](../../README.md) experiment toolkit.
+**Running prototype v0.5** in the [Cooking by the Book](../../README.md) experiment toolkit.
 
 [Open browser app](index.html) · [Scientific methods and limitations](MODEL.md) · [Python engine](engine.py) · [20-ingredient catalogue](ingredients.json)
+
+## Mobile-first workspace (v0.5)
+
+On a phone, four tabs—**Ingredients**, **Process**, **Results**, and **Compare**—sit above the **always-visible bake preview**. The preview remains pinned below the tab bar while you scroll long ingredient lists or process controls. Switching tabs does not reset the simulated scenario, playback, or A/B snapshots.
+
+- **Ingredients:** choose recipe presets, adjust ingredients with sliders or precise gram inputs, see total mass, reset formula.
+- **Process:** control proofing, time, temperature, thickness, oven conditions and fan.
+- **Results:** inspect numerical predictions, charts, the heat cross-section, composition and model-limit warnings.
+- **Compare:** save A/B predictions and export JSON/CSV.
+
+The **Run prediction** button is attached to the preview so it is reachable from any tab; changing sliders also triggers recalculation. Play/pause and the simulation timeline remain next to the pan. On desktop, the preview stays beside the currently selected tab. This is a UI-only release; the physics solver and its validation limits are unchanged.
 
 ## What works today
 
