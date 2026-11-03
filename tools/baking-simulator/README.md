@@ -1,10 +1,10 @@
 # BakeLab — experimental browser baking simulator
 
-**Running prototype v0.5** in the [Cooking by the Book](../../README.md) experiment toolkit.
+**Running prototype v0.7** in the [Cooking by the Book](../../README.md) experiment toolkit.
 
 [Open browser app](index.html) · [Scientific methods and limitations](MODEL.md) · [Python engine](engine.py) · [20-ingredient catalogue](ingredients.json)
 
-## Mobile-first workspace (v0.5)
+## Mobile-first workspace (v0.7)
 
 On a phone, four tabs—**Ingredients**, **Process**, **Results**, and **Compare**—sit above the **always-visible bake preview**. The preview remains pinned below the tab bar while you scroll long ingredient lists or process controls. Switching tabs does not reset the simulated scenario, playback, or A/B snapshots.
 
@@ -13,7 +13,7 @@ On a phone, four tabs—**Ingredients**, **Process**, **Results**, and **Compare
 - **Results:** inspect numerical predictions, charts, the heat cross-section, composition and model-limit warnings.
 - **Compare:** save A/B predictions and export JSON/CSV.
 
-The **Run prediction** button is attached to the preview so it is reachable from any tab; changing sliders also triggers recalculation. Play/pause and the simulation timeline remain next to the pan. On desktop, the preview stays beside the currently selected tab. This is a UI-only release; the physics solver and its validation limits are unchanged.
+The **Run prediction** button is attached to the preview so it is reachable from any tab; changing sliders also triggers recalculation. Play/pause and the simulation timeline remain next to the pan. On desktop, the preview stays beside the currently selected tab. v0.7 adds an explicit mobile right-edge **scroll gutter** (safe place to drag past ingredient sliders) and visible **g** units on ingredient number inputs. It also adds a dedicated open-pan liquid solver, so the physics branch *does* change for fluid-only formulations; dough uses its prior model.
 
 ## What works today
 
@@ -21,7 +21,7 @@ The **Run prediction** button is attached to the preview so it is reachable from
 - Bread, enriched dough, cake-like batter and intentionally absurd high-water, all-dry, high-salt, oil-rich, pure-water, pure-oil and sugar-syrup presets.
 - Sliders for **oven temperature, baking time, thickness, initial temperature, normalized steam level and fan, plus **proof duration and proof temperature**.
 - **Real time-dependent Python calculations**, not static recipe lookup. Python is loaded through **Pyodide** in a browser Web Worker.
-- A 1D **implicit finite-volume heat-flow solver** with approximate moisture diffusion, vapour loss and latent cooling; composition-dependent heat capacity/conductivity.
+- A 1D **implicit finite-volume dough solver**, and a separate **well-mixed open-pan liquid energy/evaporation solver** for water, milk, syrup, oil and mixtures. Model details in [MODEL.md](MODEL.md).
 - Centre, mid-depth and surface temperature curves; moisture and mass-loss curves; **new CO₂ generation and effective rise estimates**; provisional chemical-transformation indices; timestamp scrubber through temperature cross-sections.
 - An animated **Bake viewport**: a stylized oven/pan scene that changes with the simulated state (rise, browning, surface moisture, collapse tendency and warnings) while still exposing absurd or out-of-domain formulations.
 - Save and compare two scenarios (A/B) with fine-grained numerical differences. Export current run to JSON or time-series CSV.
@@ -80,3 +80,19 @@ The oven/pan scene is an SVG **2.5D angled illustration** whose state is recompu
 The illustration uses the current model's rise/thickness proxy, surface temperature, moisture loss, browning and composition to choose textures/colours and distinguish liquid, dry powder, high salt/sugar and nearly pure oil. For unrealistic compositions the viewport explicitly says *unsupported*: it never assumes that every ingredient mixture turns into a loaf. Granules, cracking, bubbling, steaming and the shape of the pan fill are **qualitative interpretations**, not measured or predicted internal microstructure.
 
 The remaining numerical solver is unchanged from v0.2. Rigorous visual prediction needs measured rheology, phase separation, a 3D geometry and a surface-colour calibration dataset.
+
+
+## v0.7: open-pan liquids and material-aware visuals
+
+**What's new:** pure water (blue transparent pool); milk and milk/water mixtures (creamy liquid and illustrative hot surface film); sugar syrup (concentration-dependent thickness/colour cues); olive oil and water (upper oil-layer cue); pure olive oil (does not evaporate as water). There are extra fluid presets for **only milk**, **milk + water** and **oil + water**. The sample-depth slider is interpreted as the **starting depth** for a liquid pan.
+
+A fluid-only recipe now uses [`liquids.py`](liquids.py), a compact energy/evaporation model. Its **remaining water mass**, **total remaining mass**, **apparent volume** and **depth** update during the run and are exported to JSON/CSV. Change the chart selector to **Remaining pool depth (mm)** or **Liquid sugar concentration (%)**, and scrub the preview to see it recede. The depth readout appears below the visual pan and in the **Results** tab.
+
+- This is **not CFD**. There is no splashing, turbulent boil, vortex flow, surface tension or validated film/rheology solver. The angled pan is an SVG illustration of the computed volume/depth and some uncalibrated visual cues.
+- Dissolved sugar is treated using a non-ideal but rudimentary boiling-elevation approximation; crystal growth is not simulated. The displayed sugar fraction is **not measured Brix**.
+- Milk skin is a visual indicator of plausible hot interface film formation, not an actual protein-network simulation.
+- Added free oil may appear as a floating layer; its apparent separation time is assumed, not solved from droplet size, viscosity or mixing history.
+- All pure-water simulations prevent liquid water being superheated far above its normal boiling temperature at atmospheric pressure. A completely empty pan reports a numeric oven-temperature sentinel, which **does not mean there is still material in the pan**.
+- Mobile right-side **SCROLL ↓** rail lets you slide your thumb to scroll the long controls without changing ingredient amounts.
+
+**Test coverage:** Python unit tests for water depletion, pan depth, heating, mass conservation, milk skin, oil separation, syrup concentration, tiny parameter differences and extreme inputs; plus browser-smoke tests against mocked solver responses across phone, tablet and desktop sizes. Browser startup against the real Pyodide CDN still needs live verification on GitHub Pages.

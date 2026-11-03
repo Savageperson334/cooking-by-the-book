@@ -4,8 +4,10 @@ let pyodide;
 let model;
 const ready = (async () => {
   pyodide = await loadPyodide();
-  const response = await fetch('./engine.py');
+  const [response, liquidResponse] = await Promise.all([fetch('./engine.py'), fetch('./liquids.py')]);
   if (!response.ok) throw Error('Cannot load engine.py');
+  if (!liquidResponse.ok) throw Error('Cannot load liquids.py');
+  pyodide.FS.writeFile('/home/pyodide/liquids.py', await liquidResponse.text());
   pyodide.FS.writeFile('/home/pyodide/engine.py', await response.text());
   pyodide.runPython('import sys;sys.path.insert(0,"/home/pyodide");import engine');
   model = pyodide.globals.get('engine').simulate_json;

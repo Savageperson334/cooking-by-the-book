@@ -11,7 +11,8 @@ import json
 import math
 from typing import Any
 
-VERSION = "0.2.0"
+VERSION = "0.7.0"
+from liquids import liquid_kind, simulate_liquid
 COMPONENTS = ("water", "protein", "fat", "starch", "sugar", "fiber", "ash")
 SIGMA = 5.670374419e-8  # W / (m² K⁴)
 LV = 2.26e6  # J / kg, reference latent heat of water
@@ -103,7 +104,8 @@ def composition_of(catalog: list[dict], amounts: dict[str, float]) -> dict[str, 
             "wheat_flour_g": wheat_mass, "gluten_fraction": gluten,
             "salt_g": amounts.get("salt", 0.0), "yeast_g": amounts.get("instant_yeast", 0.0),
             "baking_powder_g": amounts.get("baking_powder", 0.0),
-            "baking_soda_g": amounts.get("baking_soda", 0.0), "cocoa_g": amounts.get("cocoa", 0.0)}
+            "baking_soda_g": amounts.get("baking_soda", 0.0), "cocoa_g": amounts.get("cocoa", 0.0),
+            "milk_g": amounts.get("milk", 0.0), "free_oil_g": amounts.get("olive_oil", 0.0)}
 
 
 
@@ -197,6 +199,9 @@ def simulate(payload: dict) -> dict:
     amounts = payload["amounts"]
     recipe = composition_of(catalog, amounts)
     cfg, warnings = validate_run(recipe, payload.get("settings", {}))
+    kind = liquid_kind(recipe)
+    if kind != "solid":
+        return simulate_liquid(recipe, cfg, warnings, kind, VERSION)
     frac = recipe["fraction"]
     mass_kg = recipe["total_g"] / 1000.0
     n = int(bounded(round(cfg["thickness_mm"] / 3.5), 4, 26))

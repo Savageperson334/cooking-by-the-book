@@ -112,3 +112,39 @@ Pyodide v314.0.7 requires **module** web workers rather than classic `importScri
 The angled oven viewport draws from computed time-series temperature, water, rise and browning signals, *not* from a 3D heat/flow model. Geometry is a fixed-footprint pan analogy; steam wisps, bubbles, cracks, grain, collapse and shine are deterministic artistic representations informed by composition and the existing uncalibrated rise proxy. This is deliberately **qualitative**, especially for nearly pure liquid, oil, crystals, very dry powders and high-salt mixtures. The numerical prediction does not include oil–water phase separation, sugar glass transitions, protein gel strength or fracture mechanics. Preserve warnings and avoid interpreting this view as evidence of texture or food safety.
 
 References on physically grounded crust modelling: Purlis and Salvadori (2009), *Modelling the browning of bread during baking*, doi:10.1016/j.foodres.2009.03.007, and Chhanwal et al. (2014), temperature- and moisture-based modelling of starch gelatinization and crumb softness, doi:10.1111/jtxs.12097. The viewport is **not an implementation** of their published calibrated models.
+
+## v0.7 — liquid-only open-pan branch (not a fluid dynamics simulation)
+
+The previous 1D bread solver could produce impossible bulk water temperatures above normal boiling while substantial liquid water remained. Rather than masking that with a renderer-only patch, version 0.7 adds an explicitly separate numerical model in [`liquids.py`](liquids.py). The prior dough/batter model is preserved.
+
+**Classification:** relatively pourable, starch-light recipes are assigned *aqueous*, *syrup*, *biphasic (added oil + water)*, or *oil* categories. Starch/protein-rich recipes remain in the bread solver, since setting/gelling invalidates a well-mixed liquid approximation. Classification is approximate; e.g. egg-rich custards require a future model. `liquid_mode` is exposed to the browser.
+
+**Geometry:** Each ingredient's effective water/protein/fat/starch/sugar/fiber/ash masses are converted to additive volumes using approximate component densities. The *initial depth* control and initial volume imply a constant pan footprint area `A=V_initial / depth_initial`. As water leaves the open pan, the approximate volume and height become:
+
+```text
+water_g(t) = water_g(0) - cumulative_evaporation_g(t)
+volume_mL(t) ≈ Σ(initial_component_g / component_density_g_per_mL)
+               − cumulative_evaporation_g(t)/0.997
+liquid_depth_mm(t) = initial_depth_mm × volume_mL(t)/initial_volume_mL
+```
+
+Those formulae imply **water alone can disappear**, **milk leaves a nonvolatile residue**, and **oil does not vanish merely because it gets hot**. These are additive *apparent* volumes: dissolved sugars can alter density/volume nonlinearly, and shrinking films, foams and pot geometry are omitted. Depth is meaningful for liquid-screening runs; this is not a 3D surface/flow solver.
+
+**Thermal/evaporation balance:** A well-mixed sample exchanges heat with the nominal oven through effective exposed-face and pan-bottom coefficients (including linearized radiation). First-order sensible exchange is integrated with a bounded exponential update, and energy spent evaporating water is subtracted via a reference water latent heat. Free water temperature is bounded by an empirical ambient-pressure sugar/water boiling-point elevation curve; excess sensible energy at boiling consumes water instead. **Pure water is not permitted to reach 190°C while its liquid remains.** After a sample entirely disappears, the numerical temperature tracks the *oven as an empty-pan sentinel*, not a meaningful food temperature. Evaporation coefficients, pot heat transfer, skin resistance, atmospheric pressure, concentration effects, and syrup boiling temperature **have not been calibrated**. Low-pressure, vacuum, foam and vigorous convection are excluded.
+
+**Phase and visual cues** (intentionally **not** fully physical):
+
+- **Added olive oil:** its approximate remaining volume corresponds to a potentially floating layer above water. The time-dependent apparent separation fraction is a qualitative exponential cue and not a Stokes/emulsion model. Fat within milk/egg is not assumed to be free oil.
+- **Milk:** an elevated-temperature, exposure-dependent *skin index* shades the surface when milk is present. This is **not** calculated whey protein denaturation, film thickness or wrinkling mechanics; stirring and lid conditions are unspecified.
+- **Sugar:** sugar/(sugar+remaining_water) is a mass ratio, not a refractometer reading of °Brix. A provisional concentration-to-thickening cue and heat-tinted syrup colour appear in the viewport. Crystallization, fat/sugar glass transitions, viscosity and caramelization reaction kinetics remain unmodeled.
+- **Colours:** weighted ingredient-colour approximations, adjusted for remaining water and the above qualitative cues. They are design illustration, **not** spectral mixture, optical scattering, colorimetry, or predicted final product appearance.
+
+**Measurements to calibrate next:** pan footprint and starting depth, water mass before/after, measured liquid temperature through boiling, time-to-evaporate for 10/30/80 mm depths, oil layer thickness, skin formation versus stirring, and syrup concentration versus measured mass. Conduct individual controlled tests with food-safe dedicated equipment.
+
+**Research relevant to the mechanisms, but not to the model coefficients:**
+
+- [American Chemical Society — Density: Sink and Float for Liquids](https://www.acs.org/middleschoolchemistry/lessonplans/chapter3/lesson5.html) (oil/water stratification).
+- [Wrinkling of milk skin is mediated by evaporation](https://pubmed.ncbi.nlm.nih.gov/28085169/) (2017), evidence for evaporative protein/fat interfacial films; **not** a calibrated skin-index source.
+- [Molecular Gastronomy: A New Emerging Scientific Discipline](https://pmc.ncbi.nlm.nih.gov/articles/PMC2855180/) (2010), syrup water content/boiling point/viscosity/glass transition. Our numerical syrup exponent and colouring cue are **not** derived as validated fits from that paper.
+
+**Safety:** Steam burns, concentrated syrup, and superheated oil can cause serious injury. This toy simulation does not tell you how long to heat foods safely or whether a pan of oil will smoke or ignite. The extremes are numerical stress cases, not recommended experiments.
