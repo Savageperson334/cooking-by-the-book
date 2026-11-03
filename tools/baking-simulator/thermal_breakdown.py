@@ -64,6 +64,7 @@ def annotate_high_heat(result: dict, recipe: dict) -> dict:
     chemical_feedstock_cracked = 0.0
     lighter_products_released = 0.0
     crossing_min = None
+    crossing_material_c = None
     prev_minute = None
     prev_t = [result['settings']['initial_c']]*n
     for frame in frames:
@@ -146,6 +147,7 @@ def annotate_high_heat(result: dict, recipe: dict) -> dict:
         guessed_residue_depth=frame.get('liquid_depth_mm',0.0)*clamp(retained/original_mass)
         if initial_fat>0 and crossing_min is None and pct_cracked>=1.0:
             crossing_min = frame['minute']
+            crossing_material_c = sum(temps)/len(temps)  # estimated food temperature, not universal onset
         if retained<0.01:
             stage='empty / trace'
         elif current_water > .35*retained:
@@ -192,6 +194,7 @@ def annotate_high_heat(result: dict, recipe: dict) -> dict:
                 'chemical_conversion_pct','fat_thermal_conversion_pct','fat_intact_g'):
         result['summary'][key]=last[key]
     result['summary']['estimated_cracking_1pct_crossing_min'] = (None if crossing_min is None else round(crossing_min,2))
+    result['summary']['estimated_cracking_1pct_material_c'] = (None if crossing_material_c is None else round(crossing_material_c,2))
     result['summary']['fat_conversion_10pct_min']=None if fat_crossing_10_min is None else round(fat_crossing_10_min,2)
     result['summary']['fat_conversion_10pct_material_c']=None if fat_crossing_10_food_c is None else round(fat_crossing_10_food_c,1)
     result['summary']['organic_conversion_10pct_min']=None if total_organic_crossing_10_min is None else round(total_organic_crossing_10_min,2)
