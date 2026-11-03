@@ -137,3 +137,8 @@ Reference discussion: [thermal model](MODEL.md).
 The Results tab exposes the two independent curves and gram-based readouts. All chemical coefficients and fracture indices are *illustrative*, not fitted against measurements. See [MODEL.md](MODEL.md) for cited evidence and the limitations of 600°C simulations. Neither subsystem predicts safe use of hot oil, ignition or real flames.
 
 **v0.9.2 integration:** Existing v0.9 public output keys are retained alongside the two new independent subsystems: total organic decomposition and total fat conversion (all routes), chemically cleaved triglycerides (subset), accumulated fracture damage and currently visible fissure risk. The food-temperature/time crossing of a *modelled* 10% fat conversion is a reporting convention, not a universal crack temperature.
+
+
+### Distinct cracking-point indicators (screening only)
+
+The Results card displays the first simulated *physical fracture-index 20/100 crossing* and the first *1%-of-fat triglyceride-scission crossing*, with corresponding estimated food temperatures in both °C and °F. The physical temperature is a surface estimate, while the fat-scission temperature is a representative computational-cell average. These are uncalibrated, threshold-dependent indicators **not measured failure/cracking temperatures, ignition temperatures, nor safety guidance**. Actual transitions depend on heating history, oxygen, moisture, composition, geometry and kinetics. The physical fracture model has no constitutive modulus or fracture toughness; lipid breakdown does not resolve chemical product distributions.
