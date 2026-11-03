@@ -13,8 +13,22 @@ const ingredientVisuals={
 const categories=['Grains','Liquids','Fats','Sweeteners','Leavening & salts','Starches & proteins'];
 const defaults={oven_c:220,minutes:35,thickness_mm:80,initial_c:22,steam_pct:5,fan:0,proof_minutes:60,proof_c:26,air_access_pct:100,shape:'slab',pan:'none',altitude_m:0};
 // Mirrors geometry.py (SHAPES and PANS); tests check the ids stay in sync.
-const shapeOptions=[['slab','Flat slab (thickness)'],['cylinder','Long cylinder, e.g. baguette (diameter)'],['sphere','Ball, e.g. roll or boule (diameter)']];
-const panOptions=[['none','None, both faces open (legacy)'],['rack','Wire rack + baking paper'],['aluminium_sheet','Aluminium sheet, light (1.5 mm)'],['dark_steel_pan','Dark steel pan (1 mm)'],['glass_dish','Glass dish (5 mm)'],['cast_iron','Cast iron / Dutch oven base, preheated (5 mm)'],['baking_stone','Baking stone, preheated (15 mm)'],['baking_steel','Baking steel, preheated (6 mm)']];
+const shapeOptions=[['slab','Slab'],['cylinder','Baguette'],['sphere','Bun']];
+const panOptions=[['none','Nothing'],['rack','Rack'],['aluminium_sheet','Sheet'],['dark_steel_pan','Dark pan'],['glass_dish','Glass dish'],['cast_iron','Cast iron'],['baking_stone','Stone'],['baking_steel','Steel']];
+// Tiny pictograms for the shape and pan buttons (static markup).
+const choiceIcons={
+  slab:'<rect x="3" y="7" width="26" height="9" rx="4" fill="#d9a066"/>',
+  cylinder:'<rect x="1" y="8" width="30" height="8" rx="4" fill="#c98a4b"/><path d="M8 10l3-1M15 10l3-1M22 10l3-1" stroke="#f1d9b0" stroke-width="1.4"/>',
+  sphere:'<path d="M6 17C6 9 10 5 16 5s10 4 10 12z" fill="#d49a5c"/>',
+  none:'<path d="M4 18h24" stroke="#5b6e72" stroke-width="2" stroke-dasharray="3 3"/>',
+  rack:'<path d="M3 17h26M7 14v6M13 14v6M19 14v6M25 14v6" stroke="#8aa0a4" stroke-width="1.6"/>',
+  aluminium_sheet:'<rect x="3" y="16" width="26" height="2" rx="1" fill="#d6dee0"/>',
+  dark_steel_pan:'<path d="M3 10v8h26v-8" fill="none" stroke="#3a4448" stroke-width="2.5"/>',
+  glass_dish:'<path d="M3 10v8h26v-8" fill="rgba(140,200,230,.25)" stroke="#9fd3ea" stroke-width="2"/>',
+  cast_iron:'<path d="M5 12v6h18v-6M23 15h7" fill="none" stroke="#2a2d2f" stroke-width="3"/>',
+  baking_stone:'<rect x="3" y="13" width="26" height="6" rx="1" fill="#c4ab84"/>',
+  baking_steel:'<rect x="3" y="15" width="26" height="4" rx="1" fill="#30373b"/>'
+};
 const cToF=c=>c*9/5+32;
 const fToC=f=>(f-32)*5/9;
 const bothTemps=c=>`${fmt(c,1)} °C / ${fmt(cToF(c),1)} °F`;
@@ -39,26 +53,32 @@ const presets={
   flatbread:{bread_flour:300,water:195,salt:8,instant_yeast:2},
   focaccia:{bread_flour:500,water:400,olive_oil:40,salt:10,instant_yeast:7},
   pagnotta:{bread_flour:500,water:290,salt:10,instant_yeast:10},
+  brick:{bread_flour:700,water:250,salt:15},
+  everest:{bread_flour:500,water:340,salt:10,instant_yeast:5},
+  marathon:{bread_flour:500,water:340,salt:10,instant_yeast:5},
   bananadry:{water:500,banana:250},
   oatporridge:{water:600,oats:200}
 };
 const settingDefs=[
-  ['proof_minutes','Proofing duration','min',0,720,1],
-  ['proof_c','Proofing temperature','°C',-10,55,0.5],
-  ['oven_c','Oven temperature','°C',-20,600,1],
-  ['minutes','Baking time','min',0,1440,1],
-  ['thickness_mm','Initial sample depth','mm',2,250,1],
-  ['initial_c','Initial dough temperature','°C',-20,100,1],
-  ['steam_pct','Oven water vapour level','%*',0,100,1],
-  ['fan','Forced-air oven','0 / 1',0,1,1],
-  ['air_access_pct','Air access (relative)','%',0,100,1],
-  ['altitude_m','Altitude above sea level','m',-500,5000,50]
+  ['oven_c','Oven','°C',-20,600,1],
+  ['minutes','Bake time','min',0,1440,1],
+  ['thickness_mm','Thickness','mm',2,250,1],
+  ['proof_minutes','Proof time','min',0,720,1],
+  ['steam_pct','Steam','%',0,100,1],
+  ['fan','Fan','off / on',0,1,1]
+];
+// Rarely-touched or deliberately strange knobs live in a collapsed drawer.
+const weirdDefs=[
+  ['proof_c','Proof temperature','°C',-10,55,0.5],
+  ['initial_c','Dough temperature going in','°C',-20,100,1],
+  ['altitude_m','Altitude','m',-500,9000,50],
+  ['air_access_pct','Air getting at it','%',0,100,1]
 ];
 let catalog=[],amounts={},settings={...defaults},engineReady=false,last=null,requestId=0,renderedId=0,timer=null;
 let snapshots={A:null,B:null};
 let playing=false,playHandle=0,playStart=0,playOrigin=0,playValue=100;
 const BAKE_PLAY_DURATION=16000; // milliseconds for 0..100 at 1x
-const worker = new Worker('./worker.js?ui=0.12.0',{type:'module'});
+const worker = new Worker('./worker.js?ui=0.13.0',{type:'module'});
 worker.onmessage = ({data}) => {
   if(data.type==='ready') {
     engineReady=true;$('engine-dot').classList.add('ready');$('engine-status').textContent='Python model ready';$('run').disabled=false;
@@ -80,11 +100,17 @@ function createElement(tag,attrs={},children=[]){const e=document.createElement(
 // Shape/pan presets also set the bake. Values are typical home-baking
 // conditions, chosen for illustration; pagnotta mirrors a published test bake.
 const presetProcess={
-  baguette:{shape:'cylinder',pan:'none',thickness_mm:60,oven_c:240,minutes:25,proof_minutes:60,proof_c:26,steam_pct:30,fan:0,initial_c:24},
-  roll:{shape:'sphere',pan:'none',thickness_mm:65,oven_c:190,minutes:18,proof_minutes:45,proof_c:28,steam_pct:5,fan:0,initial_c:24},
-  flatbread:{shape:'slab',pan:'baking_steel',thickness_mm:8,oven_c:280,minutes:8,proof_minutes:0,steam_pct:5,fan:0,initial_c:20},
-  focaccia:{shape:'slab',pan:'dark_steel_pan',thickness_mm:25,oven_c:220,minutes:25,proof_minutes:45,proof_c:26,steam_pct:5,fan:0,initial_c:24},
-  pagnotta:{shape:'slab',pan:'rack',thickness_mm:50,oven_c:200,minutes:40,proof_minutes:0,steam_pct:5,fan:1,initial_c:25},
+  bread:{shape:'slab',pan:'dark_steel_pan',thickness_mm:45,oven_c:220,minutes:40,proof_minutes:60,proof_c:26,steam_pct:5,fan:0,initial_c:24,altitude_m:0},
+  rich:{shape:'slab',pan:'dark_steel_pan',thickness_mm:40,oven_c:180,minutes:35,proof_minutes:60,proof_c:26,steam_pct:5,fan:0,initial_c:24,altitude_m:0},
+  cake:{shape:'slab',pan:'dark_steel_pan',thickness_mm:35,oven_c:175,minutes:35,proof_minutes:0,steam_pct:0,fan:0,initial_c:20,altitude_m:0},
+  baguette:{shape:'cylinder',pan:'none',thickness_mm:60,oven_c:240,minutes:25,proof_minutes:60,proof_c:26,steam_pct:30,fan:0,initial_c:24,altitude_m:0},
+  roll:{shape:'sphere',pan:'none',thickness_mm:65,oven_c:190,minutes:18,proof_minutes:45,proof_c:28,steam_pct:5,fan:0,initial_c:24,altitude_m:0},
+  flatbread:{shape:'slab',pan:'baking_steel',thickness_mm:8,oven_c:280,minutes:8,proof_minutes:0,steam_pct:5,fan:0,initial_c:20,altitude_m:0},
+  focaccia:{shape:'slab',pan:'dark_steel_pan',thickness_mm:25,oven_c:220,minutes:25,proof_minutes:45,proof_c:26,steam_pct:5,fan:0,initial_c:24,altitude_m:0},
+  pagnotta:{shape:'slab',pan:'rack',thickness_mm:50,oven_c:200,minutes:40,proof_minutes:0,steam_pct:5,fan:1,initial_c:25,altitude_m:0},
+  brick:{shape:'slab',pan:'baking_stone',thickness_mm:70,oven_c:600,minutes:180,proof_minutes:0,steam_pct:0,fan:1,initial_c:22,altitude_m:0,air_access_pct:100},
+  everest:{shape:'slab',pan:'dark_steel_pan',thickness_mm:60,oven_c:220,minutes:40,proof_minutes:60,proof_c:26,steam_pct:5,fan:0,initial_c:24,altitude_m:8849},
+  marathon:{shape:'sphere',pan:'none',thickness_mm:120,oven_c:200,minutes:1440,proof_minutes:60,proof_c:26,steam_pct:5,fan:0,initial_c:24,altitude_m:0},
 };
 function loadPreset(id){
  const initial=presets[id]||presets.bread;
@@ -106,10 +132,9 @@ function updateMass(){
   // the water carried by every non-flour ingredient (milk, egg, butter ...).
   const box=$('bakers-pct');if(!box)return;
   const flour=flourIds.reduce((a,id)=>a+Number(amounts[id]||0),0);
-  if(flour<1){box.textContent='No flour in the formula, so baker\'s percentages do not apply.';return;}
+  if(flour<1){box.textContent='no flour';return;}
   const water=catalog.filter(i=>!flourIds.includes(i.id)).reduce((a,i)=>a+Number(amounts[i.id]||0)*Number(i.water||0),0);
-  const pct=id=>100*Number(amounts[id]||0)/flour;
-  box.textContent=`Baker's %: hydration ${fmt(100*water/flour,0)}% · salt ${fmt(pct('salt'),1)}% · yeast ${fmt(pct('instant_yeast'),1)}% · sugar ${fmt(pct('sugar'),1)}% · fat ${fmt(pct('butter')+pct('olive_oil'),1)}% (of ${fmt(flour,0)} g flour)`;
+  box.textContent=`${fmt(100*water/flour,0)}% hydration`;
 }
 function renderIngredients(){
   const wrapper=$('ingredients');wrapper.replaceChildren();
@@ -136,61 +161,76 @@ function renderIngredients(){
 }
 function renderSettings(){
  const wrapper=$('process-controls');
- const unitPicker=createElement('div',{class:'unit-picker'});
- unitPicker.append(createElement('span',{text:'Temperature controls · also shown in both units'}));
- const switcher=createElement('button',{class:'secondary unit-switch',type:'button',text:`Adjust in °${temperatureUnit} · switch to °${temperatureUnit==='C'?'F':'C'}`,'aria-label':'Switch temperature slider units'});
- switcher.addEventListener('click',()=>{temperatureUnit=temperatureUnit==='C'?'F':'C';wrapper.replaceChildren();renderSettings();renderResult();});
- unitPicker.append(switcher);wrapper.append(unitPicker);
- // Shape and pan/support: discrete choices, sent to Python as strings.
- for(const [key,label,options,note] of [
-   ['shape','Shape',shapeOptions,'Slab heats through its thickness; cylinder and ball heat from all round. For cylinder and ball, the depth slider is the diameter.'],
-   ['pan','Pan / support (slab only)',panOptions,'Changes the bottom face: open, rack + paper, or a solid pan solved as its own temperature. Handbook material values; dough-pan contact is assumed.']]){
-   const row=createElement('div',{class:'setting'});
-   const head=createElement('div',{class:'setting-head'});
-   const select=createElement('select',{'aria-label':label,id:'setting-'+key});
-   for(const [value,text] of options){const o=createElement('option',{value,text});if(settings[key]===value)o.selected=true;select.append(o);}
-   select.addEventListener('change',()=>{settings[key]=select.value;queueRun();});
-   head.append(createElement('span',{text:label}));
-   row.append(head,select,createElement('div',{class:'subtle',text:note}));
-   wrapper.append(row);
- }
- for(const [key,label,unit,min,max,step] of settingDefs){
+ // Shape and pan as picture buttons; pans only matter for a slab.
+ const choiceRow=(key,label,options)=>{
+   const row=createElement('div',{class:'setting choice-setting'});
+   row.append(createElement('div',{class:'setting-head'},[createElement('span',{text:label})]));
+   const group=createElement('div',{class:'choice-row',role:'radiogroup','aria-label':label,id:'setting-'+key});
+   for(const [value,text] of options){
+     const b=createElement('button',{type:'button',class:'choice',role:'radio','aria-checked':String(settings[key]===value),'data-value':value});
+     b.innerHTML=`<svg viewBox="0 0 32 22" aria-hidden="true">${choiceIcons[value]||''}</svg>`;
+     b.append(createElement('span',{text}));
+     b.addEventListener('click',()=>{settings[key]=value;wrapper.replaceChildren();renderSettings();queueRun();});
+     group.append(b);
+   }
+   row.append(group);return row;
+ };
+ wrapper.append(choiceRow('shape','Shape',shapeOptions));
+ if((settings.shape||'slab')==='slab')wrapper.append(choiceRow('pan','Sitting on',panOptions));
+ const slider=([key,label,unit,min,max,step])=>{
     const temperature=temperatureKeys.has(key);
     const row=createElement('div',{class:'setting'});
     const head=createElement('div',{class:'setting-head'});
-    const name=createElement('span',{text:label}),val=createElement('strong');
+    const shownLabel=key==='thickness_mm'&&(settings.shape||'slab')!=='slab'?'Diameter':label;
+    const name=createElement('span',{text:shownLabel}),val=createElement('strong');
     const present=()=>{
       if(temperature){
         const active=temperatureUnit==='C'?settings[key]:cToF(settings[key]);
-        const alternate=temperatureUnit==='C'?cToF(settings[key]):settings[key];
-        val.textContent=`${fmt(active,1)} °${temperatureUnit} · ${fmt(alternate,1)} °${temperatureUnit==='C'?'F':'C'}`;
-      }else val.textContent=`${fmt(settings[key],step<1?1:0)} ${unit}`;
+        val.textContent=`${fmt(active,0)} °${temperatureUnit}`;
+      }else if(key==='fan')val.textContent=settings.fan?'on':'off';
+      else if(key==='altitude_m')val.textContent=`${fmt(settings[key],0)} m · boils at ${fmt(temperatureUnit==='C'?boilingPointAt(settings[key]):cToF(boilingPointAt(settings[key])),0)} °${temperatureUnit}`;
+      else val.textContent=`${fmt(settings[key],step<1?1:0)} ${unit}`;
     };
     present();head.append(name,val);
     const displayMin=temperature&&temperatureUnit==='F'?cToF(min):min;
     const displayMax=temperature&&temperatureUnit==='F'?cToF(max):max;
     const displayStep=temperature&&temperatureUnit==='F'?1:step;
     const displayValue=temperature&&temperatureUnit==='F'?cToF(settings[key]):settings[key];
-    const slider=createElement('input',{type:'range',min:displayMin,max:displayMax,step:displayStep,value:displayValue,'aria-label':`${label} (${temperature?'°'+temperatureUnit:unit})`});
-    slider.addEventListener('input',()=>{
-      const selected=Number(slider.value);
+    const input=createElement('input',{type:'range',min:displayMin,max:displayMax,step:displayStep,value:displayValue,'aria-label':`${shownLabel} (${temperature?'°'+temperatureUnit:unit})`});
+    input.addEventListener('input',()=>{
+      const selected=Number(input.value);
       settings[key]=temperature&&temperatureUnit==='F'?fToC(selected):selected;
-      present();if(key==='altitude_m'&&$('altitude-note'))$('altitude-note').textContent=altitudeNote();queueRun();
+      present();queueRun();
     });
-    row.append(head,slider);
-    if(key==='thickness_mm')row.append(createElement('div',{class:'subtle',text:'For liquids, the starting depth in an open pan; for dough, the initial slab thickness before proof.'}));
-    if(key==='minutes')row.append(createElement('div',{class:'subtle',text:'Extended to 24 hours for stress testing; extreme durations are not safe-cooking recommendations.'}));
-    if(key==='oven_c')row.append(createElement('div',{class:'subtle',text:'Extended to 600°C / 1112°F. Beyond ordinary ovens, these are numerical stress tests only.'}));
-    if(key==='steam_pct')row.append(createElement('div',{class:'subtle',text:'* Vapour pressure / water saturation at 100°C; not oven RH.'}));
-    if(key==='proof_minutes')row.append(createElement('div',{class:'subtle',text:'Pre-bake fermentation. Empirical CO₂ rates only; no measured calibration.'}));
-    if(key==='altitude_m')row.append(createElement('div',{class:'subtle',id:'altitude-note',text:altitudeNote()}));
-    if(key==='air_access_pct')row.append(createElement('div',{class:'subtle',text:'High-heat screening only. 100% means freely accessible air, not pure oxygen; 0% means no char oxidation in the proxy. Does not predict fire.'}));
-    wrapper.append(row);
+    row.append(head,input);
+    if(key==='oven_c'&&settings.oven_c>300)row.append(createElement('div',{class:'subtle',text:'Past ~300 °C this is a thought experiment, not oven advice.'}));
+    return row;
+ };
+ for(const def of settingDefs){
+   if(def[0]!=='fan'){wrapper.append(slider(def));continue;}
+   // A fan is either on or off: a toggle, not a slider.
+   const row=createElement('div',{class:'setting fan-setting'});
+   const group=createElement('div',{class:'choice-row compact',role:'radiogroup','aria-label':'Fan',id:'setting-fan'});
+   for(const [value,text] of [[0,'Fan off'],[1,'Fan on']]){
+     const btn=createElement('button',{type:'button',class:'choice',role:'radio','aria-checked':String(Number(settings.fan)===value),text});
+     btn.addEventListener('click',()=>{settings.fan=value;wrapper.replaceChildren();renderSettings();queueRun();});
+     group.append(btn);
+   }
+   row.append(group);wrapper.append(row);
  }
+ const drawer=createElement('details',{class:'weird-drawer'});
+ if(weirdOpen)drawer.open=true;
+ drawer.addEventListener('toggle',()=>{weirdOpen=drawer.open;});
+ drawer.append(createElement('summary',{text:'Weird physics'}));
+ for(const def of weirdDefs)drawer.append(slider(def));
+ const switcher=createElement('button',{class:'ghost unit-switch',type:'button',text:`Show °${temperatureUnit==='C'?'F':'C'} instead`});
+ switcher.addEventListener('click',()=>{temperatureUnit=temperatureUnit==='C'?'F':'C';wrapper.replaceChildren();renderSettings();renderResult();});
+ drawer.append(switcher);
+ wrapper.append(drawer);
 }
+let weirdOpen=false;
 // Standard-atmosphere boiling point, same formulas as engine.py.
 function boilingPointAt(altitude){const p=101325*Math.pow(1-2.25577e-5*altitude,5.25588);return 1730.63/(8.07131-Math.log10(p/133.322368))-233.426;}
-function altitudeNote(){const b=boilingPointAt(settings.altitude_m||0);return `Water boils at about ${fmt(b,1)} °C / ${fmt(cToF(b),1)} °F here; lower air pressure also lets gas expand more.`;}
 function queueRun(delay=360){
   if(!engineReady)return;
   setPlaying(false);
@@ -198,39 +238,56 @@ function queueRun(delay=360){
   $('save-a').disabled=true;$('save-b').disabled=true;$('scene-play').disabled=true;
   timer=setTimeout(()=>{$('run-indicator').textContent='SOLVING';$('run').disabled=true;worker.postMessage({id:thisId,payload:{catalog,...currentInputs()}});},delay);
 }
-// Milestones are read from the timeline the engine returned; nothing new is calculated.
+// One plain-language verdict under the preview, read from the engine's
+// results. Wording only; nothing new is calculated here.
 function firstMinute(timeline,key,threshold){const f=timeline.find(x=>(x[key]??-Infinity)>=threshold);return f?f.minute:null;}
 function crustColour(index){
-  // Illustrative only: blend from raw dough to a deep crust as the index rises.
   const p=Math.max(0,Math.min(1,(index||0)/100));
-  const stops=[[233,214,176],[214,160,92],[160,92,42],[88,48,24]];
+  const stops=[[233,214,176],[214,160,92],[160,92,42],[60,34,20]];
   const x=p*(stops.length-1),i=Math.min(stops.length-2,Math.floor(x)),t=x-i;
   return 'rgb('+stops[i].map((v,k)=>Math.round(v+(stops[i+1][k]-v)*t)).join(',')+')';
 }
-function renderMilestones(){
-  const box=$('milestones');if(!box||!last)return;
-  const r=last.result,tl=r.timeline,s=r.summary,items=[];
-  const add=(label,value,pending=false)=>{const li=createElement('li',{class:pending?'pending':''});li.append(createElement('span',{text:label}),createElement('strong',{text:value}));items.push(li);};
-  const fmtMin=m=>m==null?'not reached':`${fmt(m,1)} min`;
+function tempText(c){return `${fmt(temperatureUnit==='C'?c:cToF(c),0)} °${temperatureUnit}`;}
+function crustWord(index){return index<5?'pale':index<20?'blond':index<45?'golden':index<80?'deep brown':index<95?'very dark':'burnt';}
+function verdictText(r){
+  const s=r.summary,tl=r.timeline,boil=s.boil_c??100,stage=s.thermal_stage||'',bits=[];
+  if(/ash/.test(stage))return 'A small pile of ash. There is no bread here.';
+  if(stage==='charred')return 'Charcoal briquette. Structurally sound, spiritually gone.';
   if(s.liquid_mode){
-    add('Remaining depth at end',`${fmt(s.liquid_depth_mm,1)} mm`);
-    add('Water left at end',`${fmt(s.water_remaining_g,1)} g`);
+    const st=s.residue_state,wet=(s.water_remaining_g??0)>1;
+    if(st==='empty')return 'Boiled dry. The pan is empty and very hot.';
+    if(st==='oil')return `Hot oil at ${tempText(s.center_c)}. Still oil.`;
+    if(st==='scorched')return 'Scorched onto the pan. Soak overnight.';
+    if(s.liquid_mode==='syrup'&&wet)bits.push(`Still syrup, ${fmt(s.sugar_concentration_pct,0)}% sugar`);
+    else if(s.liquid_mode==='biphasic'&&wet)bits.push('Oil floating on hot water');
+    else if(wet&&(s.milk_skin_index_pct??0)>30)bits.push('Hot milk with a skin on top');
+    else if(wet&&(s.milk_skin_index_pct??0)>0)bits.push(`Warm milk, ${tempText(s.center_c)}`);
+    else if(wet&&(st==='liquid'||st==='slurry'))bits.push((s.solids_fraction_pct??0)<1?`Still water, now ${tempText(s.center_c)}`:'Still soup');
+    else if(wet)bits.push('Cooked down to a paste');
+    else bits.push('Dried onto the pan');
+    const start=r.settings.thickness_mm;
+    if(s.liquid_depth_mm<start*0.95)bits.push(`${fmt(s.liquid_depth_mm,0)} of ${fmt(start,0)} mm left`);
   }else{
-    const boil=s.boil_c??100,target=boil-4;
-    const key=tl[0]?.coldest_c!=null?'coldest_c':'center_c';
-    const tTarget=firstMinute(tl,key,target);
-    add(`Coldest point reaches ${fmt(target,0)} °C`,fmtMin(tTarget),tTarget==null);
-    const tBrown=firstMinute(tl,'browning_index',5);
-    add('Top crust starts to brown (index 5%)',fmtMin(tBrown),tBrown==null);
-    add('Top browning at end',`${fmt(s.browning_index,0)}%`);
-    if(s.bottom_browning_index!=null)add('Bottom browning at end',`${fmt(s.bottom_browning_index,0)}%`);
-    if(s.crust_surface_c!=null)add('Crust skin at end',bothTemps(s.crust_surface_c));
-    add('Water lost',`${fmt(s.mass_loss_pct,1)}%`);
-    add('Colour change ΔE*',s.colour_change_dE_purlis2007==null?'n/a outside 180–220 °C':fmt(s.colour_change_dE_purlis2007,0),s.colour_change_dE_purlis2007==null);
+    const key=tl[0]?.coldest_c!=null?'coldest_c':'center_c',cold=s.coldest_c??s.center_c;
+    const done=firstMinute(tl,key,boil-4);
+    if(done!=null)bits.push(`Baked through at ${fmt(done,0)} min`);
+    else bits.push(cold<45?`Barely warm inside (${tempText(cold)})`:`Still doughy in the middle (${tempText(cold)})`);
+    if((s.water_pct??100)<15)bits[0]=`Hot, toasted powder (${tempText(cold)} inside)`;
+    if((s.ash_pct??0)>8)bits.push('mostly salt');
+    bits.push(`${crustWord(s.browning_index)} crust`);
+    if(s.bottom_browning_index!=null)bits.push(`${crustWord(s.bottom_browning_index)} underneath`);
+    if(s.max_rise_pct>150)bits.push('puffed up like a balloon');
   }
-  if(s.boil_c!=null&&Math.abs(s.boil_c-100)>0.2)add('Boiling point at this altitude',bothTemps(s.boil_c));
-  box.replaceChildren(...items);
-  $('crust-swatch').style.background=s.liquid_mode?'#7ebbe4':crustColour(s.browning_index);
+  if(s.mass_loss_pct>=0.5)bits.push(`${fmt(s.mass_loss_pct,0)}% lighter`);
+  if(boil<97)bits.push(`water boils at ${tempText(boil)} up here`);
+  const text=bits.join(' · ');
+  return text.charAt(0).toUpperCase()+text.slice(1)+'.';
+}
+function renderVerdict(){
+  const el=$('verdict');if(!el||!last)return;
+  const s=last.result.summary;
+  $('verdict-text').textContent=verdictText(last.result);
+  $('verdict-dot').style.background=s.liquid_mode?'#7ebbe4':crustColour(s.browning_index);
 }
 function renderResult(){
   if(!last)return;
@@ -238,7 +295,7 @@ function renderResult(){
   const boxes=$('metrics').children;
   const vals=[[bothTemps(s.center_c),'Centre temperature'],[bothTemps(s.surface_c),'Surface temperature'],[fmt(s.estimated_total_mass_loss_pct ?? s.mass_loss_pct,2)+' %','Estimated total (water + organics)'],[fmt(s.browning_index,2),'Relative index · uncalibrated'],[fmt(s.rise_pct,2)+' %','Volume proxy · uncalibrated'],[fmt(s.co2_generated_g,3)+' g','CO₂ potential estimate']];
   vals.forEach((pair,i)=>{boxes[i].querySelector('strong').textContent=pair[0];boxes[i].querySelector('small').textContent=pair[1];});
-  renderMilestones();
+  renderVerdict();
   const segments=['water','starch','protein','fat','sugar','fiber','ash'];
   const comp=r.summary, proportions={water:comp.water_pct,starch:comp.starch_pct,protein:comp.protein_pct,fat:comp.fat_pct,sugar:comp.sugar_pct,fiber:comp.fiber_pct,ash:comp.ash_pct};
   let allocated=0;
@@ -650,8 +707,7 @@ function drawChart(){
  const svg=$('chart');svg.replaceChildren();if(!last)return;
  const t=last.result.timeline;const maxT=Math.max(1,t.at(-1).minute);const metric=$('metric').value;
  let lines;
- if(metric==='temp'){lines=[['center_c','Center (°'+temperatureUnit+')',colors.center],['mid_c','Mid-depth (°'+temperatureUnit+')',colors.mid],['surface_c','Outer layer (°'+temperatureUnit+')',colors.surface]];
-   if(last.result.timeline[0]?.crust_surface_c!=null)lines.push(['crust_surface_c','Crust skin (°'+temperatureUnit+')','#e07a4f']);
+ if(metric==='temp'){lines=[['center_c','Center (°'+temperatureUnit+')',colors.center],['mid_c','Mid-depth (°'+temperatureUnit+')',colors.mid],['surface_c','Surface (°'+temperatureUnit+')',colors.surface]];
    if(last.result.timeline[0]?.bottom_c!=null)lines.push(['bottom_c','Bottom (°'+temperatureUnit+')','#c8b3ea']);}
  else if(metric==='moisture')lines=[['center_moisture_pct','Center',colors.center],['surface_moisture_pct','Surface',colors.blue||colors.mid]];
  else if(metric==='mass')lines=[['mass_loss_pct','Water loss · %',colors.mid],['estimated_total_mass_loss_pct','Estimated total · %',colors.surface]];

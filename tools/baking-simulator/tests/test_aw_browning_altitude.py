@@ -22,6 +22,8 @@ class Altitude(unittest.TestCase):
         self.assertAlmostEqual(engine.boiling_point_c(engine.pressure_at_altitude(0)), 100.0, delta=0.05)
         self.assertAlmostEqual(engine.boiling_point_c(engine.pressure_at_altitude(1500)), 95.0, delta=0.3)
         self.assertAlmostEqual(engine.boiling_point_c(engine.pressure_at_altitude(3000)), 90.0, delta=0.4)
+        # Summit of Everest: water boils at roughly 70 °C.
+        self.assertAlmostEqual(engine.boiling_point_c(engine.pressure_at_altitude(8849)), 70.5, delta=1.5)
 
     def test_water_never_exceeds_local_boiling_point(self):
         r = run({'water': 500}, oven_c=220, minutes=60, thickness_mm=30, altitude_m=3000)

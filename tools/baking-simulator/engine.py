@@ -11,7 +11,7 @@ import json
 import math
 from typing import Any
 
-VERSION = "0.12.0"
+VERSION = "0.13.0"
 from liquids import liquid_kind, simulate_liquid
 from thermal_breakdown import annotate_high_heat
 from physical_fracture import annotate_fracture
@@ -273,7 +273,7 @@ def validate_run(recipe: dict, settings: dict) -> tuple[dict, list[str]]:
     limits = {"oven_c": (-20, 600), "minutes": (0, 1440), "thickness_mm": (2, 250),
               "initial_c": (-20, 100), "steam_pct": (0, 100), "fan": (0, 1),
               "proof_minutes": (0, 720), "proof_c": (-10, 55), "air_access_pct": (0,100),
-              "altitude_m": (-500, 5000)}
+              "altitude_m": (-500, 9000)}
     cfg = {}
     for key, (lo, hi) in limits.items():
         val = float(settings.get(key, {"oven_c": 220, "minutes": 35, "thickness_mm": 80,

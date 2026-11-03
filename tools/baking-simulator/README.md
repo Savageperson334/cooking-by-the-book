@@ -1,6 +1,6 @@
 # BakeLab — experimental browser baking simulator
 
-**Running prototype v0.12.0** in the [Cooking by the Book](../../README.md) experiment toolkit.
+**Running prototype v0.13.0** in the [Cooking by the Book](../../README.md) experiment toolkit.
 
 [Open browser app](index.html) · [Scientific methods and limitations](MODEL.md) · [Python engine](engine.py) · [20-ingredient catalogue](ingredients.json)
 
@@ -233,4 +233,14 @@ Python files and `ingredients.json` are now fetched with the same `?ui=` release
 - **Preview drawing** follows the shape and support: a baguette on the rack, a bun-shaped roll, and a flat loaf on a stone, steel, sheet or paper. Only a deep pan is drawn as a pan.
 - **Temperature chart** adds crust-skin and bottom lines.
 - **Preview warning** shows only the run's most important problem. The general caveats stay under Results → Model boundaries.
+
+
+## v0.13.0 — less paperwork, more baking
+
+The physics is unchanged. The app got shorter and plainer:
+
+- **Process tab:** shape, what the dough sits on, and the fan are picture buttons. Six sliders follow: oven, bake time, thickness/diameter, proof time, steam. Proof temperature, dough temperature, altitude (now up to Everest) and air access live in a collapsed **Weird physics** drawer.
+- **One-line verdict** under the preview replaces the milestones card. For example: "Baked through at 24 min · golden crust · golden underneath · 8% lighter.", "Still syrup, 82% sugar.", "Charcoal briquette."
+- **Presets are now two groups: Breads and Absurd.** Breads (lean loaf, rich dough, cake, baguette, roll, flatbread, focaccia, round loaf) each set a sensible bake. Absurd adds a brick fired at 600 °C, a loaf baked on Everest and a 24-hour bake to the old extremes.
+- **Shorter on-screen text:** one hydration chip instead of a row of baker's percentages; no citations or colour-change score on screen (the sources stay in [MODEL.md](MODEL.md)); a single caution under the oven slider past 300 °C.
 
