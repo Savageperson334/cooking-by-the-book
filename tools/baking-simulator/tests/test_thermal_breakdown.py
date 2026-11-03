@@ -58,7 +58,7 @@ class TestHighEnd(unittest.TestCase):
         for id in ['thermal-remain','thermal-char','thermal-ash','thermal-crack']:
             self.assertIn(f'id="{id}"',html);self.assertIn(f"$('{id}')",js)
         self.assertIn('value="survival"',html)
-        self.assertIn('value="cracking"',html)
+        self.assertIn('value="fracture"',html)
         self.assertIn('BUILD 0.9',html)
 
 if __name__=='__main__': unittest.main()
