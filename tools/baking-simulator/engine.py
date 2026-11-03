@@ -19,6 +19,7 @@ COMPONENTS = ("water", "protein", "fat", "starch", "sugar", "fiber", "ash")
 SIGMA = 5.670374419e-8  # W / (m² K⁴)
 LV = 2.26e6  # J / kg, reference latent heat of water
 WATER_CP = 4180.0  # J/(kg K)
+BOIL_C = 100.0  # liquid-water ceiling inside wet crumb at ~1 atm (°C)
 R_GAS = 8.314462618  # J/(mol K)
 CO2_G_MOL = 44.0095
 P_ATM = 101325.0
@@ -260,11 +261,11 @@ def simulate(payload: dict) -> dict:
     alpha = k0 / (density * cp0)
     dt_stable = 0.75 * dx * dx / max(alpha, 2e-8)
     dt = min(5.0, max(0.25, dt_stable))
-    steps = max(1, math.ceil(total_s / dt))
+    steps = max(1, math.ceil(total_s / dt)) if total_s > 0 else 0
     if steps > 40000:
         steps = 40000
         warnings.append("Numerical time step was coarsened for a very long/thin scenario; check discretization sensitivity before interpreting results.")
-    dt = total_s / steps if total_s else 0.0
+    dt = total_s / steps if steps else 0.0
     stride = max(1, steps // 100)
     timeline = []
     heat_transfer = 16.0 + 13.0 * cfg["fan"]  # convective W m-2 K-1 heuristic
@@ -355,6 +356,17 @@ def simulate(payload: dict) -> dict:
         for i in range(n-2,-1,-1):
             next_temp[i] = (right[i]-upper[i]*next_temp[i+1])/diag[i]
         temps = next_temp
+        # Wet crumb cannot hold liquid water far above its boiling point. Any
+        # sensible heat above BOIL_C in a cell that still has water is spent
+        # boiling that water off; the vapour is assumed to vent through the
+        # porous matrix. Inward vapour condensation (the "heat pipe" that
+        # warms real crumb faster) is NOT modelled.
+        for i in range(n):
+            if wet[i] > 0.0 and temps[i] > BOIL_C:
+                boiled = min(wet[i], (temps[i]-BOIL_C) * cps[i] / LV)
+                wet[i] -= boiled
+                evaporated += boiled
+                temps[i] -= boiled * LV / cps[i]
         # moisture diffusion; conservative and controlled by local temperature
         dm = [0.0] * n
         for j in range(1, n):
@@ -423,6 +435,8 @@ def simulate(payload: dict) -> dict:
         warnings.append("Starch and protein transition indices are disabled without flour; use the temperature and moisture traces only.")
     if sum(wet)+dry_kg_m2 < 0.01*original_kg_m2:
         warnings.append("Almost no mass remains: the calculated temperature belongs to an empty computational grid and is not a material prediction.")
+    if recipe["flour_g"] > 0 and cfg["minutes"] > 0 and temps[-1] > BOIL_C and temps[0] < 90.0:
+        warnings.append("Centre heating is likely under-predicted: this conduction-only model omits the internal steam (evaporation-condensation) transport that heats real crumb faster.")
     if cfg["oven_c"] > 280:
         warnings.append("At very high temperatures, pyrolysis, fire hazards and chemical decomposition are outside this model.")
     warnings.append("Screening model: 1D slab, fixed geometry, simplified evaporation and reaction indices. Not validated for food safety or exact doneness.")
@@ -459,7 +473,7 @@ def simulate(payload: dict) -> dict:
         "timeline": timeline,
         "warnings": warnings,
         "metadata": {"grid_cells": n, "steps": steps, "dt_s": round(dt,5),
-                     "method": "1D implicit finite-volume heat + explicit moisture, gas-index thickness coupling (experimental)",
+                     "method": "1D implicit finite-volume heat + explicit moisture, 100 °C wet-cell boiling cap, gas-index thickness coupling (experimental)",
                      "reference": "Choi–Okos thermal properties; Purlis/Salvadori heat/moisture modelling"}
     },recipe),recipe)
 

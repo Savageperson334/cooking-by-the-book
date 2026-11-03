@@ -4,7 +4,9 @@ PHYSICAL crack formation is distinct from chemical cracking of triglycerides.
 This model uses moisture loss, a 1-D gradient and matrix composition as stress
 proxies. It does not calculate a strain/stress tensor, elastic modulus, fracture
 energy, adhesion, a material-specific critical stress, or a real crack point.
-All reported 50-point crossing times are MODEL THRESHOLDS, NOT FRACTURE TIMES.
+All reported 20-point crossing times are MODEL THRESHOLDS, NOT FRACTURE TIMES.
+(``physical_crack_proxy_50pct_crossing_min`` is a legacy key name kept for
+compatibility; it holds the same 20-point crossing.)
 """
 from __future__ import annotations
 import math
@@ -87,7 +89,7 @@ def annotate_fracture(result:dict,recipe:dict)->dict:
     result['summary']['physical_crack_proxy_20pct_crossing_min']=None if crossing is None else round(crossing,2)
     result['summary']['physical_crack_proxy_20pct_surface_c']=None if crossing_surface_c is None else round(crossing_surface_c,2)
     result['summary']['physical_crack_proxy_50pct_crossing_min']=None if crossing is None else round(crossing,2)  # legacy alias, avoid for display
-    result['summary']['crack_risk_onset_min']=result['summary']['physical_crack_proxy_50pct_crossing_min']
+    result['summary']['crack_risk_onset_min']=result['summary']['physical_crack_proxy_20pct_crossing_min']
     if max(f['physical_crack_risk_pct'] for f in frames)>5:
         result['warnings'].append(
             'Physical fracture: model uses drying/shrinkage and temperature/moisture-gradient stress drives, '

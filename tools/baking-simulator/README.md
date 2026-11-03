@@ -1,6 +1,6 @@
 # BakeLab — experimental browser baking simulator
 
-**Running prototype v0.9.1** in the [Cooking by the Book](../../README.md) experiment toolkit.
+**Running prototype v0.9.2** in the [Cooking by the Book](../../README.md) experiment toolkit.
 
 [Open browser app](index.html) · [Scientific methods and limitations](MODEL.md) · [Python engine](engine.py) · [20-ingredient catalogue](ingredients.json)
 
@@ -69,7 +69,7 @@ The project should remain a general *food experiments* toolkit, not define the s
 - The estimated volume changes sample **thickness in the fixed-footprint heat model**, so a larger simulated rise also changes the heating trajectory.
 - Charts, A/B comparisons, and CSV exports now expose the gas and expansion signals.
 - Current stable Pyodide is loaded in a **module web worker**, matching upstream documentation.
-- 26 automated Python tests, including continuous parameter sensitivity and extreme mixtures.
+- 26 automated Python tests at the time (the suite has since grown; run it for the current count), including continuous parameter sensitivity and extreme mixtures.
 
 **Interpretation:** These are directional/diagnostic model outputs for hypotheses. Rise percentages are not validated predictions of real loaf size. CO₂ venting is excluded from the water-only mass-loss balance, and a chemical-leavening proxy omits detailed acid chemistry. A truly physical baking model will need measured viscoelasticity, bubble transport, and calibration.
 
@@ -95,7 +95,7 @@ A fluid-only recipe now uses [`liquids.py`](liquids.py), a compact energy/evapor
 - All pure-water simulations prevent liquid water being superheated far above its normal boiling temperature at atmospheric pressure. A completely empty pan reports a numeric oven-temperature sentinel, which **does not mean there is still material in the pan**.
 - Mobile right-side **SCROLL ↓** rail lets you slide your thumb to scroll the long controls without changing ingredient amounts.
 
-**Test coverage:** Python unit tests for water depletion, pan depth, heating, mass conservation, milk skin, oil separation, syrup concentration, tiny parameter differences and extreme inputs; plus browser-smoke tests against mocked solver responses across phone, tablet and desktop sizes. Browser startup against the real Pyodide CDN still needs live verification on GitHub Pages.
+**Test coverage:** Python unit tests for water depletion, pan depth, heating, mass conservation, milk skin, oil separation, syrup concentration, tiny parameter differences and extreme inputs; plus static checks of the HTML/JS wiring (tabs, controls, worker setup). There are **no automated in-browser tests yet**; browser startup against the real Pyodide CDN still needs live verification on GitHub Pages.
 
 ## v0.9: water + banana / rolled oats, longer ranges, and °C/°F
 
@@ -142,3 +142,10 @@ The Results tab exposes the two independent curves and gram-based readouts. All 
 ### Distinct cracking-point indicators (screening only)
 
 The Results card displays the first simulated *physical fracture-index 20/100 crossing* and the first *1%-of-fat triglyceride-scission crossing*, with corresponding estimated food temperatures in both °C and °F. The physical temperature is a surface estimate, while the fat-scission temperature is a representative computational-cell average. These are uncalibrated, threshold-dependent indicators **not measured failure/cracking temperatures, ignition temperatures, nor safety guidance**. Actual transitions depend on heating history, oxygen, moisture, composition, geometry and kinetics. The physical fracture model has no constitutive modulus or fracture toughness; lipid breakdown does not resolve chemical product distributions.
+
+
+## v0.9.2 fixes — boiling ceiling for wet dough
+
+- **Wet crumb no longer superheats.** Previously only the surface cell could lose water, so interior cells could reach 150 °C+ (or 500 °C at extreme settings) while still holding ~45% liquid water. Any dough cell that still contains water is now held near **100 °C**: excess heat boils that water off and the vapour is assumed to vent. Interior drying, mass loss and the high-heat breakdown stages now follow from that.
+- **Centre heating is still slow.** The model remains conduction-only, without the internal steam "heat pipe" that warms real crumb; the default lean loaf reports a much cooler centre than a real loaf would reach. A warning now says so whenever the centre stays below 90 °C while the surface is above 100 °C.
+- The browser worker now shows a readable message if the Pyodide runtime cannot be downloaded, and skips simulation requests that a newer slider change has already superseded.

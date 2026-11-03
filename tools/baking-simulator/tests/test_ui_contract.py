@@ -7,9 +7,17 @@ class TestUIContract(unittest.TestCase):
     def test_pyodide_module_worker(self):
         js = (HERE / 'worker.js').read_text()
         app = (HERE / 'app.js').read_text()
-        self.assertIn('import { loadPyodide }', js)
+        self.assertIn('{ loadPyodide } = await import(PYODIDE_URL)', js)
+        self.assertIn("pyodide/v314.0.7/full/pyodide.mjs", js)
         self.assertNotIn('importScripts(', js)
+        # A failed CDN download must surface a readable message, not a generic worker error.
+        self.assertIn('Could not download the Python runtime', js)
         self.assertIn("new Worker('./worker.js',{type:'module'})", app)
+
+    def test_worker_skips_superseded_runs(self):
+        js = (HERE / 'worker.js').read_text()
+        self.assertIn('latestId = Math.max(latestId, id)', js)
+        self.assertIn('if (id !== latestId) return;', js)
 
     def test_gas_controls_outputs_and_export_are_wired(self):
         html = (HERE / 'index.html').read_text()
